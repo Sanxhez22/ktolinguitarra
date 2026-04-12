@@ -18,10 +18,11 @@ sealed class Dest(val route: String, val label: String, val icon: ImageVector) {
     object Search : Dest("search", "Buscar", Icons.Filled.Search)
     object Practice : Dest("practice", "Práctica", Icons.Filled.PlayArrow)
     object Progress : Dest("progress", "Progreso", Icons.Filled.Star)
-    object Profile : Dest("profile", "Perfil", Icons.Filled.Person)
+    object Profile : Dest("profile", "Perfil", Icons.Filled.Settings)
 
     // propenso a dar error"
     object Chat : Dest(route = "chat", label = "Wilfredo", icon = Icons.Filled.Person)
+    object Tuner : Dest(route = "tuner", label = "Afinador", icon = Icons.Filled.Settings)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -31,7 +32,7 @@ fun AppNav() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    val bottomItems = listOf(Dest.Home, Dest.Search, Dest.Practice, Dest.Progress, Dest.Profile)
+    val bottomItems = listOf(Dest.Home, Dest.Search, Dest.Tuner, Dest.Practice, Dest.Progress, Dest.Profile)
 
     // Drawer
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -56,7 +57,7 @@ fun AppNav() {
                 )
 
                 val drawerItems = listOf(
-                    Dest.Home, Dest.Practice, Dest.Progress, Dest.Profile, Dest.Chat
+                    Dest.Home, Dest.Practice, Dest.Progress, Dest.Profile, Dest.Chat, Dest.Tuner
                 )
 
                 drawerItems.forEach { screen ->
@@ -126,7 +127,8 @@ fun AppNav() {
                 composable(Dest.Progress.route) { ProgressScreen() }
                 composable(Dest.Profile.route) { ProfileScreen() }
 
-                composable(Dest.Chat.route) { WilfredoScreen() }
+                composable(Dest.Chat.route) { ChatScreen() }
+                composable(Dest.Chat.route.replace("chat", "tuner")) { TunerScreen() }
             }
         }
     }
