@@ -163,6 +163,7 @@ fun TunerScreen() {
                             label = "notaColor"
                         )
 
+
                         Row(verticalAlignment = Alignment.Bottom) {
                             Text(
                                 text = nota!!,
