@@ -33,6 +33,8 @@ sealed class Dest(val route: String, val label: String, val icon: ImageVector) {
     object Tuner : Dest("tuner", "Afinador", Icons.Filled.MusicNote)
     object Progress : Dest("progress", "Progreso", Icons.Filled.Star)
     object Wilfredo : Dest("wilfredo", "Wilfredo", Icons.Filled.Person)
+    object Login : Dest("login", "Login", Icons.Filled.Person)
+
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -41,6 +43,7 @@ fun AppNav() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val showBars = currentRoute != Dest.Login.route
 
     val bottomItems = listOf(
         Dest.Home,
@@ -107,56 +110,65 @@ fun AppNav() {
     ) {
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = "FretMind",
-                            color = Color.White
+                if (showBars) {
+                    TopAppBar(
+                        title = {
+                            Text(
+                                text = "FretMind",
+                                color = Color.White
+                            )
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = NavDark,
+                            titleContentColor = Color.White
                         )
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = NavDark,
-                        titleContentColor = Color.White,
-                        navigationIconContentColor = Color.White
                     )
-                )
+                }
             },
             bottomBar = {
-                NavigationBar(
-                    containerColor = NavDark,
-                    tonalElevation = 0.dp
-                ) {
-                    bottomItems.forEach { screen ->
-                        NavigationBarItem(
-                            selected = currentRoute == screen.route,
-                            onClick = { go(screen.route) },
-                            icon = {
-                                Icon(
-                                    imageVector = screen.icon,
-                                    contentDescription = screen.label
+                if (showBars) {
+                    NavigationBar(
+                        containerColor = NavDark,
+                        tonalElevation = 0.dp
+                    ) {
+                        bottomItems.forEach { screen ->
+                            NavigationBarItem(
+                                selected = currentRoute == screen.route,
+                                onClick = { go(screen.route) },
+                                icon = {
+                                    Icon(
+                                        imageVector = screen.icon,
+                                        contentDescription = screen.label
+                                    )
+                                },
+                                label = { Text(screen.label) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = NavSelected,
+                                    selectedTextColor = NavSelected,
+                                    unselectedIconColor = NavUnselected,
+                                    unselectedTextColor = NavUnselected,
+                                    indicatorColor = Color(0xFF3A3120)
                                 )
-                            },
-                            label = {
-                                Text(screen.label)
-                            },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = NavSelected,
-                                selectedTextColor = NavSelected,
-                                unselectedIconColor = NavUnselected,
-                                unselectedTextColor = NavUnselected,
-                                indicatorColor = Color(0xFF3A3120)
                             )
-                        )
+                        }
                     }
                 }
             }
         ) { padding ->
             NavHost(
                 navController = navController,
-                startDestination = "splash",
+                startDestination = Dest.Login.route,
                 modifier = Modifier.padding(padding)
             ) {
-                composable("splash") { SplashScreen(navController) }
+                composable(Dest.Login.route) {
+                    LoginScreen(
+                        onLoginClick = {
+                            navController.navigate(Dest.Home.route) {
+                                popUpTo(Dest.Login.route) { inclusive = true }
+                            }
+                        }
+                    )
+                }
 
                 composable(Dest.Home.route) { HomeScreen() }
                 composable(Dest.Search.route) { SearchScreen() }
