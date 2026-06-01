@@ -59,4 +59,13 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     implementation("androidx.navigation:navigation-compose:2.7.7")
     implementation("androidx.compose.material:material-icons-extended")
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.gson)
+    implementation(libs.okhttp.logging)
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.datastore.preferences)
+    implementation(libs.credentials)
+    implementation(libs.credentials.play.auth)
+    implementation(libs.play.auth)
+    implementation(libs.lifecycle.viewmodel.compose)
 }
