@@ -19,6 +19,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -31,9 +35,15 @@ import com.example.prueba.ui.theme.FretGold
 import com.example.prueba.ui.theme.FretMuted
 import com.example.prueba.ui.theme.FretSurface
 import com.example.prueba.ui.theme.FretText
+import com.example.prueba.viewmodel.HomeViewModel
+import com.example.prueba.viewmodel.UiState
 
 @Composable
-fun HomeScreen() {
+fun HomeScreen(homeViewModel: HomeViewModel = viewModel()) {
+    val state by homeViewModel.homeState.collectAsState()
+    LaunchedEffect(Unit) { homeViewModel.loadHomeData() }
+    val data = (state as? UiState.Success)?.data
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -46,7 +56,10 @@ fun HomeScreen() {
         ContinuePracticeCard()
         StatsRow()
         DailyGoalCard()
-        WilfredoTipCard()
+        WilfredoTipCard(
+            tip = data?.wilfredoTip ?: "",
+            loading = data?.isTipLoading ?: (state is UiState.Loading)
+        )
         SuggestedSongsSection()
         Spacer(modifier = Modifier.height(90.dp))
     }
@@ -288,7 +301,8 @@ fun DailyGoalCard() {
 }
 
 @Composable
-fun WilfredoTipCard() {
+fun WilfredoTipCard(tip: String = "", loading: Boolean = false) {
+    val fallback = "Hoy detecté que tus mejores resultados salen cuando tocas despacio primero. Empieza a 70% de velocidad y luego sube."
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF101722)),
@@ -307,7 +321,11 @@ fun WilfredoTipCard() {
             )
 
             Text(
-                text = "Hoy detecté que tus mejores resultados salen cuando tocas despacio primero. Empieza a 70% de velocidad y luego sube.",
+                text = when {
+                    tip.isNotBlank() -> tip
+                    loading -> "Wilfredo está preparando tu consejo de hoy... 🎸"
+                    else -> fallback
+                },
                 color = FretText,
                 fontSize = 14.sp,
                 lineHeight = 20.sp

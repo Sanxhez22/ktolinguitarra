@@ -16,7 +16,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.prueba.ui.theme.*
+import com.example.prueba.viewmodel.PracticeViewModel
+import com.example.prueba.viewmodel.UiState
 import kotlinx.coroutines.delay
 
 data class Ejercicio(
@@ -38,7 +41,7 @@ private val EJERCICIOS = listOf(
 enum class FasePractica { SELECCION, MODO, GUIADO, CRONOMETRO, ANALISIS, RESULTADO }
 
 @Composable
-fun PracticeScreen() {
+fun PracticeScreen(practiceViewModel: PracticeViewModel = viewModel()) {
     var fase by remember { mutableStateOf(FasePractica.SELECCION) }
     var ejercicioSel by remember { mutableStateOf<Ejercicio?>(null) }
     var modoSeleccionado by remember { mutableStateOf<String?>(null) } // "guiado" | "libre"
@@ -46,6 +49,8 @@ fun PracticeScreen() {
     var activo by remember { mutableStateOf(false) }
     var metricas by remember { mutableStateOf<Map<String, Int>?>(null) }
     var ejerciciosCompletados by remember { mutableIntStateOf(0) }
+
+    val feedbackState by practiceViewModel.feedbackState.collectAsState()
 
     Column(
         modifier = Modifier
@@ -93,7 +98,14 @@ fun PracticeScreen() {
             FasePractica.ANALISIS -> {
                 AnalisisView(
                     onComplete = {
-                        metricas = simularMetricas(ejercicioSel!!.id, segundos)
+                        val m = simularMetricas(ejercicioSel!!.id, segundos)
+                        metricas = m
+                        // Feedback pedagógico real de Wilfredo según las métricas de la sesión
+                        practiceViewModel.getFeedback(
+                            precision = (m["precision"] ?: 0) / 100f,
+                            rhythm = (m["ritmo"] ?: 0) / 100f,
+                            bpm = m["bpm"] ?: 120
+                        )
                         fase = FasePractica.RESULTADO
                     }
                 )
@@ -117,6 +129,11 @@ fun PracticeScreen() {
                     ejercicio = ejercicioSel!!,
                     segundos = segundos,
                     metricas = metricas,
+                    feedback = when (val s = feedbackState) {
+                        is UiState.Success -> s.data.feedback
+                        is UiState.Loading -> "Wilfredo está analizando tu sesión... 🎸"
+                        else -> null
+                    },
                     onNueva = {
                         fase = FasePractica.SELECCION
                         ejercicioSel = null
@@ -412,6 +429,7 @@ fun ResultadoView(
     ejercicio: Ejercicio,
     segundos: Int,
     metricas: Map<String, Int>?,
+    feedback: String? = null,
     onNueva: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -519,7 +537,7 @@ fun ResultadoView(
                     )
                 }
                 Text(
-                    text = "¡Buen trabajo! Tu técnica mejora sostenidamente. 🎸",
+                    text = feedback ?: "¡Buen trabajo! Tu técnica mejora sostenidamente. 🎸",
                     color = FretText,
                     fontSize = 14.sp,
                     lineHeight = 20.sp

@@ -16,7 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.prueba.ui.theme.*
+import com.example.prueba.viewmodel.ChatViewModel
+import com.example.prueba.viewmodel.UiState
 
 data class Mensaje(val contenido: String, val esWilfredo: Boolean)
 
@@ -28,10 +31,38 @@ private val SUGERENCIAS = listOf(
 )
 
 @Composable
-fun ChatScreen() {
+fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
     var input by remember { mutableStateOf("") }
     var mensajes by remember { mutableStateOf(listOf<Mensaje>()) }
     var cargando by remember { mutableStateOf(false) }
+
+    val chatState by viewModel.chatState.collectAsState()
+
+    // Reacciona a las respuestas reales del backend (Wilfredo)
+    LaunchedEffect(chatState) {
+        when (val s = chatState) {
+            is UiState.Success -> {
+                mensajes = mensajes + Mensaje(s.data.respuesta, esWilfredo = true)
+                cargando = false
+                viewModel.resetChatState()
+            }
+            is UiState.Error -> {
+                mensajes = mensajes + Mensaje("⚠️ ${s.message}", esWilfredo = true)
+                cargando = false
+                viewModel.resetChatState()
+            }
+            UiState.Loading -> cargando = true
+            UiState.Idle -> {}
+        }
+    }
+
+    // Envía un mensaje del usuario y dispara la llamada al backend
+    fun enviar(texto: String) {
+        val limpio = texto.trim()
+        if (limpio.isEmpty()) return
+        mensajes = mensajes + Mensaje(limpio, esWilfredo = false)
+        viewModel.sendMessage(limpio, history = mensajes.map { it.contenido })
+    }
 
     Column(
         modifier = Modifier
@@ -103,10 +134,7 @@ fun ChatScreen() {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SUGERENCIAS.take(3).forEach { sugerencia ->
                         Surface(
-                            modifier = Modifier.clickable {
-                                mensajes = mensajes + Mensaje(sugerencia, false)
-                                cargando = true
-                            },
+                            modifier = Modifier.clickable { enviar(sugerencia) },
                             color = FretSurface,
                             shape = RoundedCornerShape(20.dp)
                         ) {
@@ -188,9 +216,8 @@ fun ChatScreen() {
             Button(
                 onClick = {
                     if (input.isNotBlank()) {
-                        mensajes = mensajes + Mensaje(input, false)
+                        enviar(input)
                         input = ""
-                        cargando = true
                     }
                 },
                 enabled = input.isNotBlank(),

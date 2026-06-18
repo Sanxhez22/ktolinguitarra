@@ -1,7 +1,6 @@
 package com.example.prueba.api
 
 import okhttp3.MultipartBody
-import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -71,7 +70,7 @@ interface FastApiService {
 
     @Multipart
     @POST("/practica/analyze")
-    suspend fun practicaAnalyze(@Part("audio") audio: RequestBody): Response<PracticaAnalyzeInfo>
+    suspend fun practicaAnalyze(@Part audio: MultipartBody.Part): Response<PracticaAnalyzeInfo>
 
     @Multipart
     @POST("/practica")
