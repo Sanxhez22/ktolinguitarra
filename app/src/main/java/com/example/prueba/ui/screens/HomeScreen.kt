@@ -1,6 +1,7 @@
 package com.example.prueba.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,7 +40,10 @@ import com.example.prueba.viewmodel.HomeViewModel
 import com.example.prueba.viewmodel.UiState
 
 @Composable
-fun HomeScreen(homeViewModel: HomeViewModel = viewModel()) {
+fun HomeScreen(
+    homeViewModel: HomeViewModel = viewModel(),
+    onNavigate: (String) -> Unit = {}
+) {
     val state by homeViewModel.homeState.collectAsState()
     LaunchedEffect(Unit) { homeViewModel.loadHomeData() }
     val data = (state as? UiState.Success)?.data
@@ -53,14 +57,18 @@ fun HomeScreen(homeViewModel: HomeViewModel = viewModel()) {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         HomeHeader()
-        ContinuePracticeCard()
+        // Rutas (coinciden con Dest en Navigation.kt).
+        ContinuePracticeCard(
+            onSeguir = { onNavigate("practice") },
+            onVerRutina = { onNavigate("progress") }
+        )
         StatsRow()
         DailyGoalCard()
         WilfredoTipCard(
             tip = data?.wilfredoTip ?: "",
             loading = data?.isTipLoading ?: (state is UiState.Loading)
         )
-        SuggestedSongsSection()
+        SuggestedSongsSection(onVerCanciones = { onNavigate("search") })
         Spacer(modifier = Modifier.height(90.dp))
     }
 }
@@ -93,7 +101,10 @@ fun HomeHeader() {
 }
 
 @Composable
-fun ContinuePracticeCard() {
+fun ContinuePracticeCard(
+    onSeguir: () -> Unit = {},
+    onVerRutina: () -> Unit = {}
+) {
     val gradient = Brush.horizontalGradient(
         colors = listOf(
             Color(0xFF1A2233),
@@ -141,7 +152,7 @@ fun ContinuePracticeCard() {
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Button(
-                    onClick = { },
+                    onClick = onSeguir,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = FretGold,
                         contentColor = FretBlack
@@ -150,7 +161,7 @@ fun ContinuePracticeCard() {
                     Text("Seguir")
                 }
 
-                OutlinedButton(onClick = { }) {
+                OutlinedButton(onClick = onVerRutina) {
                     Text("Ver rutina")
                 }
             }
@@ -335,7 +346,7 @@ fun WilfredoTipCard(tip: String = "", loading: Boolean = false) {
 }
 
 @Composable
-fun SuggestedSongsSection() {
+fun SuggestedSongsSection(onVerCanciones: () -> Unit = {}) {
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -349,19 +360,22 @@ fun SuggestedSongsSection() {
         SuggestedSongCard(
             title = "Do I Wanna Know?",
             artist = "Arctic Monkeys",
-            difficulty = "Intermedio"
+            difficulty = "Intermedio",
+            onClick = onVerCanciones
         )
 
         SuggestedSongCard(
             title = "Come As You Are",
             artist = "Nirvana",
-            difficulty = "Fácil"
+            difficulty = "Fácil",
+            onClick = onVerCanciones
         )
 
         SuggestedSongCard(
             title = "505",
             artist = "Arctic Monkeys",
-            difficulty = "Intermedio"
+            difficulty = "Intermedio",
+            onClick = onVerCanciones
         )
     }
 }
@@ -370,10 +384,13 @@ fun SuggestedSongsSection() {
 fun SuggestedSongCard(
     title: String,
     artist: String,
-    difficulty: String
+    difficulty: String,
+    onClick: () -> Unit = {}
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = FretSurface),
         shape = RoundedCornerShape(20.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)

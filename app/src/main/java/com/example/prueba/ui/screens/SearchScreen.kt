@@ -1,6 +1,7 @@
 package com.example.prueba.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -42,7 +43,10 @@ private val nivelBg = mapOf(
 )
 
 @Composable
-fun SearchScreen(viewModel: SearchViewModel = viewModel()) {
+fun SearchScreen(
+    viewModel: SearchViewModel = viewModel(),
+    onSongClick: (Long) -> Unit = {}
+) {
     var query by remember { mutableStateOf("") }
     val searchState by viewModel.searchState.collectAsState()
 
@@ -110,7 +114,7 @@ fun SearchScreen(viewModel: SearchViewModel = viewModel()) {
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         items(canciones) { cancion ->
-                            SongCard(cancion = cancion)
+                            SongCard(cancion = cancion, onClick = { onSongClick(cancion.songId) })
                         }
                     }
                 }
@@ -134,12 +138,14 @@ private fun EstadoMensaje(texto: String) {
 }
 
 @Composable
-fun SongCard(cancion: SongsterrSong) {
+fun SongCard(cancion: SongsterrSong, onClick: () -> Unit = {}) {
     // Dificultad representativa: la del track por defecto, si existe.
     val nivel = dificultadLabel(cancion.tracks.getOrNull(cancion.defaultTrack)?.difficulty)
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = FretSurface),
         shape = RoundedCornerShape(20.dp)
     ) {

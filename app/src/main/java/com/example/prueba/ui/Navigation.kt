@@ -18,9 +18,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
 import androidx.navigation.compose.*
+import androidx.navigation.navArgument
 import com.example.prueba.ui.screens.*
 import kotlinx.coroutines.launch
+
+/** Ruta concreta de detalle para un songId dado. */
+fun songDetailRoute(songId: Long) = "songDetail/$songId"
 
 val NavDark = Color(0xFF15192A)
 val NavSelected = Color(0xFFD49A2A)
@@ -34,6 +39,7 @@ sealed class Dest(val route: String, val label: String, val icon: ImageVector) {
     object Progress : Dest("progress", "Progreso", Icons.Filled.Star)
     object Wilfredo : Dest("wilfredo", "Wilfredo", Icons.Filled.Person)
     object Login : Dest("login", "Login", Icons.Filled.Person)
+    object SongDetail : Dest("songDetail/{songId}", "Detalle", Icons.Filled.MusicNote)
 
 }
 
@@ -170,12 +176,21 @@ fun AppNav() {
                     )
                 }
 
-                composable(Dest.Home.route) { HomeScreen() }
-                composable(Dest.Search.route) { SearchScreen() }
+                composable(Dest.Home.route) { HomeScreen(onNavigate = { route -> go(route) }) }
+                composable(Dest.Search.route) {
+                    SearchScreen(onSongClick = { id -> navController.navigate(songDetailRoute(id)) })
+                }
                 composable(Dest.Practice.route) { PracticeScreen() }
                 composable(Dest.Tuner.route) { TunerScreen() }
                 composable(Dest.Progress.route) { ProgressScreen() }
                 composable(Dest.Wilfredo.route) { ChatScreen() }
+                composable(
+                    route = Dest.SongDetail.route,
+                    arguments = listOf(navArgument("songId") { type = NavType.LongType })
+                ) { backStackEntry ->
+                    val songId = backStackEntry.arguments?.getLong("songId") ?: 0L
+                    SongDetailScreen(songId = songId, onBack = { navController.popBackStack() })
+                }
             }
         }
     }

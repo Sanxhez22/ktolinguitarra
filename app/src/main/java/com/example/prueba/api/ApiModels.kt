@@ -219,7 +219,31 @@ data class SongsterrTrack(
     val name: String?,
     val tuning: List<Int>?,
     val difficulty: Int?,
-    val hash: String?
+    val hash: String?,
+    val isVocalTrack: Boolean? = null,
+    val isEmpty: Boolean? = null
+)
+
+data class SongsterrAuthor(
+    val personId: Long?,
+    val name: String?,
+    val profileName: String?
+)
+
+// Respuesta de /api/meta/{songId}: metadata rica de una canción.
+data class SongsterrMeta(
+    val songId: Long,
+    val artist: String,
+    val title: String,
+    val description: String? = null,
+    val author: SongsterrAuthor? = null,
+    val tags: List<String>? = null,
+    val views: Int? = null,
+    val favoritesCount: Int? = null,
+    val hasChords: Boolean = false,
+    val hasPlayer: Boolean = false,
+    val tracks: List<SongsterrTrack> = emptyList(),
+    val defaultTrack: Int = 0
 )
 
 data class SongsterrSong(
