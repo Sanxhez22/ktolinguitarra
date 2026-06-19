@@ -39,6 +39,7 @@ sealed class Dest(val route: String, val label: String, val icon: ImageVector) {
     object Progress : Dest("progress", "Progreso", Icons.Filled.Star)
     object Wilfredo : Dest("wilfredo", "Wilfredo", Icons.Filled.Person)
     object Login : Dest("login", "Login", Icons.Filled.Person)
+    object Splash : Dest("splash", "Splash", Icons.Filled.Home)
     object SongDetail : Dest("songDetail/{songId}", "Detalle", Icons.Filled.MusicNote)
 
 }
@@ -49,7 +50,7 @@ fun AppNav() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val showBars = currentRoute != Dest.Login.route
+    val showBars = currentRoute != Dest.Login.route && currentRoute != Dest.Splash.route
 
     val bottomItems = listOf(
         Dest.Home,
@@ -163,12 +164,14 @@ fun AppNav() {
         ) { padding ->
             NavHost(
                 navController = navController,
-                startDestination = Dest.Login.route,
+                startDestination = Dest.Splash.route,
                 modifier = Modifier.padding(padding)
             ) {
+                composable(Dest.Splash.route) { SplashScreen(navController) }
+
                 composable(Dest.Login.route) {
                     LoginScreen(
-                        onLoginClick = {
+                        onLoginSuccess = {
                             navController.navigate(Dest.Home.route) {
                                 popUpTo(Dest.Login.route) { inclusive = true }
                             }
@@ -176,7 +179,16 @@ fun AppNav() {
                     )
                 }
 
-                composable(Dest.Home.route) { HomeScreen(onNavigate = { route -> go(route) }) }
+                composable(Dest.Home.route) {
+                    HomeScreen(
+                        onNavigate = { route -> go(route) },
+                        onLogout = {
+                            navController.navigate(Dest.Login.route) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                    )
+                }
                 composable(Dest.Search.route) {
                     SearchScreen(onSongClick = { id -> navController.navigate(songDetailRoute(id)) })
                 }

@@ -209,6 +209,30 @@ data class PracticaAnalyzeInfo(
 )
 
 // ==========================================
+// AUTH DOMAIN
+// ==========================================
+
+data class GoogleLoginRequest(val idToken: String)
+
+data class EstadisticasDto(
+    val sesiones: Int = 0,
+    val precisionPromedio: Double = 0.0
+)
+
+// Perfil devuelto por /auth/google y /auth/perfil/{id}.
+// Gson mapea snake_case del backend (fecha_registro, precision_promedio...).
+data class UserProfileDto(
+    val id: String,
+    val nombre: String? = null,
+    val email: String? = null,
+    val foto: String? = null,
+    val nivel: String = "principiante",
+    val fechaRegistro: String? = null,
+    val ultimaSesion: String? = null,
+    val estadisticas: EstadisticasDto? = null
+)
+
+// ==========================================
 // SONGSTERR DOMAIN
 // ==========================================
 

@@ -19,10 +19,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.prueba.data.repository.AuthRepository
 import com.example.prueba.ui.theme.FretBlack
 import com.example.prueba.ui.theme.FretGold
 import com.example.prueba.ui.theme.FretMuted
@@ -38,15 +41,18 @@ import com.example.prueba.ui.theme.FretSurface
 import com.example.prueba.ui.theme.FretText
 import com.example.prueba.viewmodel.HomeViewModel
 import com.example.prueba.viewmodel.UiState
+import kotlinx.coroutines.launch
 
 @Composable
 fun HomeScreen(
     homeViewModel: HomeViewModel = viewModel(),
-    onNavigate: (String) -> Unit = {}
+    onNavigate: (String) -> Unit = {},
+    onLogout: () -> Unit = {}
 ) {
     val state by homeViewModel.homeState.collectAsState()
     LaunchedEffect(Unit) { homeViewModel.loadHomeData() }
     val data = (state as? UiState.Success)?.data
+    val scope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -56,13 +62,21 @@ fun HomeScreen(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        HomeHeader()
+        HomeHeader(
+            userName = data?.userName ?: "Guitarrista",
+            aiLevel = data?.aiLevel ?: "principiante",
+            onLogout = { scope.launch { AuthRepository.signOut(); onLogout() } }
+        )
         // Rutas (coinciden con Dest en Navigation.kt).
         ContinuePracticeCard(
             onSeguir = { onNavigate("practice") },
             onVerRutina = { onNavigate("progress") }
         )
-        StatsRow()
+        StatsRow(
+            streak = data?.streak ?: 0,
+            accuracy = data?.accuracy ?: 0,
+            completed = data?.completedSessions ?: 0
+        )
         DailyGoalCard()
         WilfredoTipCard(
             tip = data?.wilfredoTip ?: "",
@@ -74,16 +88,31 @@ fun HomeScreen(
 }
 
 @Composable
-fun HomeHeader() {
+fun HomeHeader(
+    userName: String = "Guitarrista",
+    aiLevel: String = "principiante",
+    onLogout: () -> Unit = {}
+) {
+    val nivelDisplay = aiLevel.replaceFirstChar { it.uppercase() }
     Column(
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Text(
-            text = "Hola, José Luis 👋",
-            color = FretText,
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Hola, $userName 👋",
+                color = FretText,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onLogout) {
+                Text("Salir", color = FretMuted, fontSize = 13.sp)
+            }
+        }
 
         Text(
             text = "FretMind detecta que hoy puedes subir de nivel.",
@@ -92,7 +121,7 @@ fun HomeHeader() {
         )
 
         Text(
-            text = "Nivel IA actual: Intermedio",
+            text = "Nivel actual: $nivelDisplay",
             color = FretGold,
             fontSize = 16.sp,
             fontWeight = FontWeight.SemiBold
@@ -170,7 +199,11 @@ fun ContinuePracticeCard(
 }
 
 @Composable
-fun StatsRow() {
+fun StatsRow(
+    streak: Int = 0,
+    accuracy: Int = 0,
+    completed: Int = 0
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -178,7 +211,7 @@ fun StatsRow() {
         MiniStatCard(
             modifier = Modifier.weight(1f),
             title = "Racha",
-            value = "7 días",
+            value = "$streak días",
             accent = Color(0xFFE94584),
             icon = {
                 Icon(
@@ -192,7 +225,7 @@ fun StatsRow() {
         MiniStatCard(
             modifier = Modifier.weight(1f),
             title = "Precisión",
-            value = "87%",
+            value = "$accuracy%",
             accent = Color(0xFF9EF01A),
             icon = {
                 Icon(
@@ -206,7 +239,7 @@ fun StatsRow() {
         MiniStatCard(
             modifier = Modifier.weight(1f),
             title = "Completadas",
-            value = "12",
+            value = "$completed",
             accent = Color(0xFF5AC8FA),
             icon = {
                 Icon(

@@ -67,5 +67,6 @@ dependencies {
     implementation(libs.credentials)
     implementation(libs.credentials.play.auth)
     implementation(libs.play.auth)
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
     implementation(libs.lifecycle.viewmodel.compose)
 }

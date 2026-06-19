@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.prueba.data.repository.AuthRepository
 import com.example.prueba.data.repository.ChatRepository
-import com.example.prueba.data.repository.ProgressRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,36 +20,37 @@ data class HomeData(
 )
 
 class HomeViewModel : ViewModel() {
-    private val authRepository = AuthRepository()
-    private val progressRepository = ProgressRepository()
+    private val authRepository = AuthRepository
     private val chatRepository = ChatRepository()
 
     private val _homeState = MutableStateFlow<UiState<HomeData>>(UiState.Idle)
     val homeState: StateFlow<UiState<HomeData>> = _homeState.asStateFlow()
 
-    fun loadHomeData(userId: String = "") {
+    fun loadHomeData() {
         viewModelScope.launch {
             _homeState.value = UiState.Loading
 
-            val session = authRepository.getCurrentSession()
-            val userName = session?.nombre ?: "Guitarrista"
-            val aiLevel = session?.nivel ?: "Principiante"
-
-            var streak = 0
+            val session = authRepository.restoreSession().getOrNull()
+            var userName = session?.nombre ?: "Guitarrista"
+            var aiLevel = session?.nivel ?: "principiante"
             var accuracy = 0
             var completedSessions = 0
 
-            progressRepository.getUserProgress(userId).onSuccess { result ->
-                streak = (result.metrics.precision * 10).toInt()
-                accuracy = (result.metrics.consistencia * 100).toInt()
-                completedSessions = (result.metrics.error * 5).toInt()
+            // Datos reales del perfil en MongoDB (vía /auth/perfil/{id}).
+            if (session != null) {
+                authRepository.getProfile(session.id).onSuccess { perfil ->
+                    userName = perfil.nombre ?: userName
+                    aiLevel = perfil.nivel
+                    accuracy = ((perfil.estadisticas?.precisionPromedio ?: 0.0) * 100).toInt()
+                    completedSessions = perfil.estadisticas?.sesiones ?: 0
+                }
             }
 
             _homeState.value = UiState.Success(
                 HomeData(
                     userName = userName,
                     aiLevel = aiLevel,
-                    streak = streak,
+                    streak = 0, // No hay tracking de racha en backend aún.
                     accuracy = accuracy,
                     completedSessions = completedSessions
                 )

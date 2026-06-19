@@ -5,23 +5,79 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Login
+import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.prueba.api.GOOGLE_WEB_CLIENT_ID
+import com.example.prueba.viewmodel.LoginViewModel
+import com.example.prueba.viewmodel.UiState
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(
-    onLoginClick: () -> Unit
+    onLoginSuccess: () -> Unit,
+    viewModel: LoginViewModel = viewModel()
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val loginState by viewModel.loginState.collectAsState()
+    val loading = loginState is UiState.Loading
+    val error = (loginState as? UiState.Error)?.message
+
+    // Navega al Home cuando la autenticación es exitosa.
+    LaunchedEffect(loginState) {
+        if (loginState is UiState.Success) {
+            onLoginSuccess()
+            viewModel.resetState()
+        }
+    }
+
+    fun iniciarGoogleSignIn() {
+        scope.launch {
+            viewModel.setLoading()
+            try {
+                val credentialManager = CredentialManager.create(context)
+                val googleIdOption = GetGoogleIdOption.Builder()
+                    .setFilterByAuthorizedAccounts(false)
+                    .setServerClientId(GOOGLE_WEB_CLIENT_ID)
+                    .setAutoSelectEnabled(false)
+                    .build()
+                val request = GetCredentialRequest.Builder()
+                    .addCredentialOption(googleIdOption)
+                    .build()
+
+                val result = credentialManager.getCredential(context, request)
+                val credential = result.credential
+                if (credential is CustomCredential &&
+                    credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                ) {
+                    val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                    viewModel.signInWithGoogle(googleCredential.idToken)
+                } else {
+                    viewModel.reportError("Credencial de Google no reconocida.")
+                }
+            } catch (e: GetCredentialException) {
+                viewModel.reportError(e.message ?: "No se pudo iniciar sesión con Google.")
+            }
+        }
+    }
+
     val bg = Brush.verticalGradient(
         colors = listOf(
             Color(0xFF050814),
@@ -89,7 +145,8 @@ fun LoginScreen(
                     Spacer(modifier = Modifier.height(34.dp))
 
                     Button(
-                        onClick = onLoginClick,
+                        onClick = { iniciarGoogleSignIn() },
+                        enabled = !loading,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(58.dp),
@@ -100,17 +157,32 @@ fun LoginScreen(
                         shape = RoundedCornerShape(50.dp),
                         elevation = ButtonDefaults.buttonElevation(defaultElevation = 8.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Login,
-                            contentDescription = null
-                        )
+                        if (loading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                color = Color(0xFF050814),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Login,
+                                contentDescription = null
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Continuar con Google",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
 
-                        Spacer(modifier = Modifier.width(10.dp))
-
+                    if (error != null) {
+                        Spacer(modifier = Modifier.height(14.dp))
                         Text(
-                            text = "Continuar con Google",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
+                            text = "⚠️ $error",
+                            color = Color(0xFFFF8A9B),
+                            fontSize = 13.sp
                         )
                     }
 

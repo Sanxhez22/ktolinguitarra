@@ -49,6 +49,10 @@ object  ApiClient {
         fastApiRetrofit.create(FastApiService::class.java)
     }
 
+    val authService: AuthService by lazy {
+        fastApiRetrofit.create(AuthService::class.java)
+    }
+
     val songsterrService: SongsterrService by lazy {
         songsterrRetrofit.create(SongsterrService::class.java)
     }

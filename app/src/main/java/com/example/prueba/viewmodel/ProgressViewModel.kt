@@ -26,7 +26,7 @@ data class ProgressData(
 
 class ProgressViewModel : ViewModel() {
     private val progressRepository = ProgressRepository()
-    private val authRepository = AuthRepository()
+    private val authRepository = AuthRepository
 
     private val _progressState = MutableStateFlow<UiState<ProgressData>>(UiState.Idle)
     val progressState: StateFlow<UiState<ProgressData>> = _progressState.asStateFlow()
@@ -35,7 +35,7 @@ class ProgressViewModel : ViewModel() {
         viewModelScope.launch {
             _progressState.value = UiState.Loading
 
-            val session = authRepository.getCurrentSession()
+            val session = authRepository.restoreSession().getOrNull()
             val userName = session?.nombre ?: "Guitarrista"
             val aiLevel = session?.nivel ?: "Principiante"
 

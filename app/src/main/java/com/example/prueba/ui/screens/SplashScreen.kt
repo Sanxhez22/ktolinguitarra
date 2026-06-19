@@ -17,6 +17,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.example.prueba.data.repository.AuthRepository
 import kotlinx.coroutines.delay
 import com.example.prueba.R
 
@@ -38,8 +39,11 @@ fun SplashScreen(navController: NavController) {
     val scaleAnim = remember { Animatable(0.92f) }
     LaunchedEffect(true) {
         scaleAnim.animateTo(1f, animationSpec = tween(650, easing = FastOutSlowInEasing))
-        delay(1200)
-        navController.navigate("home") {
+        delay(1000)
+        // Verifica sesión persistida y enruta a Home o Login.
+        val session = AuthRepository.restoreSession().getOrNull()
+        val destino = if (session != null) "home" else "login"
+        navController.navigate(destino) {
             popUpTo("splash") { inclusive = true }
         }
     }
