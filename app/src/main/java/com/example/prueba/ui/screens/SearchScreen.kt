@@ -15,25 +15,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.prueba.api.SongsterrSong
 import com.example.prueba.ui.theme.*
+import com.example.prueba.viewmodel.SearchViewModel
+import com.example.prueba.viewmodel.UiState
 
-data class Song(
-    val titulo: String,
-    val artista: String,
-    val nivel: String,
-    val acordes: List<String>
-)
-
-private val CANCIONES = listOf(
-    Song("Do I Wanna Know?", "Arctic Monkeys", "Intermedio", listOf("Am", "C", "G", "Em")),
-    Song("Come As You Are", "Nirvana", "Fácil", listOf("Em", "D", "C")),
-    Song("505", "Arctic Monkeys", "Intermedio", listOf("Dm", "Am", "C", "G")),
-    Song("Wonderwall", "Oasis", "Fácil", listOf("Em7", "G", "Dsus4", "A7sus4")),
-    Song("Hotel California", "Eagles", "Avanzado", listOf("Bm", "F#", "A", "E", "G", "D", "Em")),
-    Song("Stairway to Heaven", "Led Zeppelin", "Avanzado", listOf("Am", "G", "F", "C")),
-    Song("Knockin on Heavens Door", "Bob Dylan", "Fácil", listOf("G", "D", "Am")),
-    Song("Nothing Else Matters", "Metallica", "Avanzado", listOf("Em", "Am", "C", "D", "G"))
-)
+// Mapea la dificultad numérica de Songsterr (track) a una etiqueta legible.
+private fun dificultadLabel(nivel: Int?): String? = when (nivel) {
+    0 -> "Fácil"
+    1 -> "Intermedio"
+    2, 3 -> "Avanzado"
+    else -> null
+}
 
 private val nivelColor = mapOf(
     "Fácil" to Color(0xFF9EF01A),
@@ -48,13 +42,9 @@ private val nivelBg = mapOf(
 )
 
 @Composable
-fun SearchScreen() {
+fun SearchScreen(viewModel: SearchViewModel = viewModel()) {
     var query by remember { mutableStateOf("") }
-
-    val filtradas = CANCIONES.filter { c ->
-        c.titulo.contains(query, ignoreCase = true) ||
-        c.artista.contains(query, ignoreCase = true)
-    }
+    val searchState by viewModel.searchState.collectAsState()
 
     Column(
         modifier = Modifier
@@ -71,14 +61,17 @@ fun SearchScreen() {
         )
 
         Text(
-            text = "Encuentra canciones para practicar",
+            text = "Encuentra canciones para practicar (Songsterr)",
             color = FretMuted,
             fontSize = 14.sp
         )
 
         OutlinedTextField(
             value = query,
-            onValueChange = { query = it },
+            onValueChange = {
+                query = it
+                viewModel.searchSongs(it)
+            },
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text("Buscar canciones o artistas...", color = FretMuted) },
             leadingIcon = {
@@ -99,23 +92,27 @@ fun SearchScreen() {
             singleLine = true
         )
 
-        if (filtradas.isEmpty()) {
-            Box(
+        when (val s = searchState) {
+            UiState.Idle -> EstadoMensaje("Escribe para buscar canciones")
+            UiState.Loading -> Box(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "No se encontraron canciones",
-                    color = FretMuted,
-                    fontSize = 14.sp
-                )
+                CircularProgressIndicator(color = FretGold)
             }
-        } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(filtradas) { cancion ->
-                    SongCard(cancion = cancion)
+            is UiState.Error -> EstadoMensaje("⚠️ ${s.message}")
+            is UiState.Success -> {
+                val canciones = s.data.filterNot { it.isJunk }
+                if (canciones.isEmpty()) {
+                    EstadoMensaje("No se encontraron canciones")
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(canciones) { cancion ->
+                            SongCard(cancion = cancion)
+                        }
+                    }
                 }
             }
         }
@@ -123,7 +120,24 @@ fun SearchScreen() {
 }
 
 @Composable
-fun SongCard(cancion: Song) {
+private fun EstadoMensaje(texto: String) {
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = texto,
+            color = FretMuted,
+            fontSize = 14.sp
+        )
+    }
+}
+
+@Composable
+fun SongCard(cancion: SongsterrSong) {
+    // Dificultad representativa: la del track por defecto, si existe.
+    val nivel = dificultadLabel(cancion.tracks.getOrNull(cancion.defaultTrack)?.difficulty)
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = FretSurface),
@@ -140,50 +154,58 @@ fun SongCard(cancion: Song) {
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = cancion.titulo,
+                        text = cancion.title,
                         color = FretText,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 16.sp
                     )
                     Text(
-                        text = cancion.artista,
+                        text = cancion.artist,
                         color = FretMuted,
                         fontSize = 13.sp
                     )
                 }
 
-                Surface(
-                    color = nivelBg[cancion.nivel] ?: FretSurface,
-                    shape = RoundedCornerShape(50)
-                ) {
-                    Text(
-                        text = cancion.nivel,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        color = nivelColor[cancion.nivel] ?: FretGold,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                cancion.acordes.forEach { acorde ->
+                if (nivel != null) {
                     Surface(
-                        color = Color(0xFF1A1F28),
+                        color = nivelBg[nivel] ?: FretSurface,
                         shape = RoundedCornerShape(50)
                     ) {
                         Text(
-                            text = acorde,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                            color = FretMuted,
-                            fontSize = 12.sp
+                            text = nivel,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            color = nivelColor[nivel] ?: FretGold,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
             }
+
+            // Etiquetas de lo que ofrece la canción en Songsterr.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (cancion.hasChords) EtiquetaSong("Acordes")
+                if (cancion.hasPlayer) EtiquetaSong("Reproductor")
+                EtiquetaSong("${cancion.tracks.size} pistas")
+            }
         }
+    }
+}
+
+@Composable
+private fun EtiquetaSong(texto: String) {
+    Surface(
+        color = Color(0xFF1A1F28),
+        shape = RoundedCornerShape(50)
+    ) {
+        Text(
+            text = texto,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            color = FretMuted,
+            fontSize = 12.sp
+        )
     }
 }
