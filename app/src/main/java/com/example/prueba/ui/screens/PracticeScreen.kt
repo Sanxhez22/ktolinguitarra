@@ -1,5 +1,9 @@
 package com.example.prueba.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -13,10 +17,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.prueba.api.PracticaResult
+import com.example.prueba.audio.WavRecorder
 import com.example.prueba.ui.theme.*
 import com.example.prueba.viewmodel.PracticeViewModel
 import com.example.prueba.viewmodel.UiState
@@ -41,16 +49,45 @@ private val EJERCICIOS = listOf(
 enum class FasePractica { SELECCION, MODO, GUIADO, CRONOMETRO, ANALISIS, RESULTADO }
 
 @Composable
-fun PracticeScreen(practiceViewModel: PracticeViewModel = viewModel()) {
+fun PracticeScreen(
+    practiceViewModel: PracticeViewModel = viewModel(),
+    onSessionComplete: (() -> Unit)? = null
+) {
+    val context = LocalContext.current
+
     var fase by remember { mutableStateOf(FasePractica.SELECCION) }
     var ejercicioSel by remember { mutableStateOf<Ejercicio?>(null) }
-    var modoSeleccionado by remember { mutableStateOf<String?>(null) } // "guiado" | "libre"
     var segundos by remember { mutableIntStateOf(0) }
     var activo by remember { mutableStateOf(false) }
-    var metricas by remember { mutableStateOf<Map<String, Int>?>(null) }
-    var ejerciciosCompletados by remember { mutableIntStateOf(0) }
 
+    val practiceState by practiceViewModel.practiceState.collectAsState()
     val feedbackState by practiceViewModel.feedbackState.collectAsState()
+
+    // Grabación real de la sesión: el audio se envía a POST /practica para
+    // calcular precisión/consistencia y persistir la sesión en MongoDB.
+    val recorder = remember { WavRecorder(context.cacheDir) }
+    var hasMicPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> hasMicPermission = granted }
+
+    DisposableEffect(Unit) {
+        onDispose { recorder.discard() }
+    }
+
+    fun nuevaSesion() {
+        recorder.discard()
+        practiceViewModel.resetPractice()
+        fase = FasePractica.SELECCION
+        ejercicioSel = null
+        segundos = 0
+        activo = false
+    }
 
     Column(
         modifier = Modifier
@@ -71,14 +108,10 @@ fun PracticeScreen(practiceViewModel: PracticeViewModel = viewModel()) {
                 EjercicioModo(
                     ejercicio = ejercicioSel!!,
                     onLibre = {
-                        modoSeleccionado = "libre"
                         activo = true
                         fase = FasePractica.CRONOMETRO
                     },
-                    onGuiado = {
-                        modoSeleccionado = "guiado"
-                        fase = FasePractica.GUIADO
-                    },
+                    onGuiado = { fase = FasePractica.GUIADO },
                     onBack = { fase = FasePractica.SELECCION }
                 )
             }
@@ -86,8 +119,7 @@ fun PracticeScreen(practiceViewModel: PracticeViewModel = viewModel()) {
             FasePractica.GUIADO -> {
                 EjerciciosGuiadosView(
                     ejercicioId = ejercicioSel!!.id,
-                    onFinalizar = { completados ->
-                        ejerciciosCompletados = completados
+                    onFinalizar = {
                         activo = true
                         fase = FasePractica.CRONOMETRO
                     },
@@ -95,51 +127,55 @@ fun PracticeScreen(practiceViewModel: PracticeViewModel = viewModel()) {
                 )
             }
 
-            FasePractica.ANALISIS -> {
-                AnalisisView(
-                    onComplete = {
-                        val m = simularMetricas(ejercicioSel!!.id, segundos)
-                        metricas = m
-                        // Feedback pedagógico real de Wilfredo según las métricas de la sesión
-                        practiceViewModel.getFeedback(
-                            precision = (m["precision"] ?: 0) / 100f,
-                            rhythm = (m["ritmo"] ?: 0) / 100f,
-                            bpm = m["bpm"] ?: 120
-                        )
-                        fase = FasePractica.RESULTADO
-                    }
-                )
-            }
-
             FasePractica.CRONOMETRO -> {
+                // Pide el permiso al entrar y arranca la grabación en cuanto
+                // esté concedido. Sin micrófono la sesión no puede evaluarse.
+                LaunchedEffect(hasMicPermission) {
+                    if (hasMicPermission) {
+                        recorder.start()
+                    } else {
+                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                }
                 CronometroView(
                     ejercicio = ejercicioSel!!,
                     segundos = segundos,
                     activo = activo,
+                    grabando = hasMicPermission,
                     onTick = { segundos++ },
                     onDetener = {
                         activo = false
+                        val wav = recorder.stop()
+                        practiceViewModel.submitSession(wav, segundos, ejercicioSel!!.id)
                         fase = FasePractica.ANALISIS
                     }
                 )
+            }
+
+            FasePractica.ANALISIS -> {
+                when (val s = practiceState) {
+                    is UiState.Success -> LaunchedEffect(s) { fase = FasePractica.RESULTADO }
+                    is UiState.Error -> AnalisisErrorView(
+                        mensaje = s.message,
+                        onReintentar = { practiceViewModel.retrySubmit() },
+                        onNueva = { nuevaSesion() }
+                    )
+                    else -> AnalisisView()
+                }
             }
 
             FasePractica.RESULTADO -> {
                 ResultadoView(
                     ejercicio = ejercicioSel!!,
                     segundos = segundos,
-                    metricas = metricas,
+                    resultado = (practiceState as? UiState.Success<PracticaResult>)?.data,
                     feedback = when (val s = feedbackState) {
                         is UiState.Success -> s.data.feedback
                         is UiState.Loading -> "Wilfredo está analizando tu sesión... 🎸"
                         else -> null
                     },
-                    onNueva = {
-                        fase = FasePractica.SELECCION
-                        ejercicioSel = null
-                        segundos = 0
-                        metricas = null
-                    }
+                    onNueva = { nuevaSesion() },
+                    onFinalizar = onSessionComplete
                 )
             }
         }
@@ -343,6 +379,7 @@ fun CronometroView(
     ejercicio: Ejercicio,
     segundos: Int,
     activo: Boolean,
+    grabando: Boolean = true,
     onTick: () -> Unit,
     onDetener: () -> Unit
 ) {
@@ -365,6 +402,22 @@ fun CronometroView(
             fontWeight = FontWeight.Bold,
             fontSize = 20.sp
         )
+
+        if (!grabando) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFE94584).copy(alpha = 0.15f)),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text(
+                    text = "🎙️ Concede el permiso de micrófono para que Wilfredo pueda evaluar tu sesión.",
+                    modifier = Modifier.padding(12.dp),
+                    color = FretText,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.height(32.dp))
 
@@ -428,9 +481,10 @@ fun CronometroView(
 fun ResultadoView(
     ejercicio: Ejercicio,
     segundos: Int,
-    metricas: Map<String, Int>?,
+    resultado: PracticaResult?,
     feedback: String? = null,
-    onNueva: () -> Unit
+    onNueva: () -> Unit,
+    onFinalizar: (() -> Unit)? = null
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Card(
@@ -450,8 +504,9 @@ fun ResultadoView(
         val mins = segundos / 60
         val secs = segundos % 60
         val timeStr = String.format("%02d:%02d", mins, secs)
-        val puntuacion = metricas?.get("puntuacion") ?: 8
-        val bpm = metricas?.get("bpm") ?: 120
+        // Métricas reales calculadas por el backend a partir del audio grabado.
+        val precision = ((resultado?.metrics?.precision ?: 0.0) * 100).toInt()
+        val consistencia = ((resultado?.metrics?.consistencia ?: 0.0) * 100).toInt()
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -467,12 +522,12 @@ fun ResultadoView(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "$puntuacion/10",
+                        text = "$precision%",
                         color = FretGold,
                         fontWeight = FontWeight.Bold,
                         fontSize = 20.sp
                     )
-                    Text(text = "Puntuación", color = FretMuted, fontSize = 11.sp)
+                    Text(text = "Precisión", color = FretMuted, fontSize = 11.sp)
                 }
             }
             Card(
@@ -485,12 +540,12 @@ fun ResultadoView(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "$bpm",
+                        text = "$consistencia%",
                         color = Color(0xFF5AC8FA),
                         fontWeight = FontWeight.Bold,
                         fontSize = 20.sp
                     )
-                    Text(text = "BPM", color = FretMuted, fontSize = 11.sp)
+                    Text(text = "Consistencia", color = FretMuted, fontSize = 11.sp)
                 }
             }
             Card(
@@ -545,28 +600,35 @@ fun ResultadoView(
             }
         }
 
-        Button(
-            onClick = onNueva,
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = FretGold, contentColor = FretBlack),
-            shape = RoundedCornerShape(20.dp)
-        ) {
-            Text("Nueva sesión", fontWeight = FontWeight.Bold)
+        if (onFinalizar != null) {
+            // Modo onboarding (primera práctica): continúa el flujo hacia Home.
+            Button(
+                onClick = onFinalizar,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = FretGold, contentColor = FretBlack),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Text("Continuar", fontWeight = FontWeight.Bold)
+            }
+            OutlinedButton(
+                onClick = onNueva,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Text("Nueva sesión")
+            }
+        } else {
+            Button(
+                onClick = onNueva,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = FretGold, contentColor = FretBlack),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Text("Nueva sesión", fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
-
-private fun simularMetricas(ejercicioId: String, duracionSeg: Int): Map<String, Int> {
-    val base = minOf(duracionSeg / 10, 10)
-    return mapOf(
-        "puntuacion" to (base + (3..5).random()),
-        "bpm" to (80..140).random(),
-        "precision" to (50..95).random(),
-        "ritmo" to (50..98).random()
-    )
-}
-
-private fun ClosedRange<Int>.random(): Int = (this.start..this.endInclusive).random()
 
 // Datos de ejercicios guiados
 private data class EjercicioGuiado(
@@ -796,12 +858,7 @@ fun EjerciciosGuiadosView(
 }
 
 @Composable
-fun AnalisisView(onComplete: () -> Unit) {
-    LaunchedEffect(Unit) {
-        delay(2500)
-        onComplete()
-    }
-
+fun AnalisisView() {
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -828,16 +885,59 @@ fun AnalisisView(onComplete: () -> Unit) {
 
         Spacer(modifier = Modifier.height(24.dp))
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("Procesando métricas...", "Revisando historial...", "Preparando feedback...").forEachIndexed { i, t ->
-                LaunchedEffect(Unit) {
-                    kotlinx.coroutines.delay(i * 500L)
-                }
+            listOf("Subiendo tu audio...", "Calculando precisión...", "Preparando feedback...").forEach { t ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(text = "✓", color = FretGold, fontSize = 12.sp)
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(text = t, color = FretMuted, fontSize = 12.sp)
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun AnalisisErrorView(
+    mensaje: String,
+    onReintentar: () -> Unit,
+    onNueva: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(text = "😕", fontSize = 48.sp)
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = "No se pudo analizar la sesión",
+            color = FretText,
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = mensaje,
+            color = FretMuted,
+            fontSize = 14.sp,
+            lineHeight = 20.sp
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        Button(
+            onClick = onReintentar,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = FretGold, contentColor = FretBlack),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            Text("Reintentar", fontWeight = FontWeight.Bold)
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        OutlinedButton(
+            onClick = onNueva,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            Text("Nueva sesión")
         }
     }
 }
