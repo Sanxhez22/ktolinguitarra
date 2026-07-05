@@ -51,7 +51,8 @@ enum class FasePractica { SELECCION, MODO, GUIADO, CRONOMETRO, ANALISIS, RESULTA
 @Composable
 fun PracticeScreen(
     practiceViewModel: PracticeViewModel = viewModel(),
-    onSessionComplete: (() -> Unit)? = null
+    onSessionComplete: (() -> Unit)? = null,
+    ejercicioPreseleccionado: String? = null
 ) {
     val context = LocalContext.current
 
@@ -62,6 +63,18 @@ fun PracticeScreen(
 
     val practiceState by practiceViewModel.practiceState.collectAsState()
     val feedbackState by practiceViewModel.feedbackState.collectAsState()
+    val ejercicioInfo by practiceViewModel.ejercicioInfo.collectAsState()
+
+    // Preselección: si el entrenador recomienda un ejercicio, saltamos directo
+    // a elegir modo con ese ejercicio ya cargado.
+    LaunchedEffect(ejercicioPreseleccionado) {
+        val pre = ejercicioPreseleccionado?.let { id -> EJERCICIOS.find { it.id == id } }
+        if (pre != null && ejercicioSel == null) {
+            ejercicioSel = pre
+            practiceViewModel.loadEjercicio(pre.id)
+            fase = FasePractica.MODO
+        }
+    }
 
     // Grabación real de la sesión: el audio se envía a POST /practica para
     // calcular precisión/consistencia y persistir la sesión en MongoDB.
@@ -99,7 +112,10 @@ fun PracticeScreen(
         when (fase) {
             FasePractica.SELECCION -> {
                 EjercicioSelection(
-                    onSelect = { ej -> ejercicioSel = ej },
+                    onSelect = { ej ->
+                        ejercicioSel = ej
+                        practiceViewModel.loadEjercicio(ej.id)
+                    },
                     onContinuar = { ejercicioSel?.let { fase = FasePractica.MODO } }
                 )
             }
@@ -107,6 +123,7 @@ fun PracticeScreen(
             FasePractica.MODO -> {
                 EjercicioModo(
                     ejercicio = ejercicioSel!!,
+                    info = ejercicioInfo?.takeIf { it.id == ejercicioSel!!.id },
                     onLibre = {
                         activo = true
                         fase = FasePractica.CRONOMETRO
@@ -268,6 +285,7 @@ fun EjercicioSelection(
 @Composable
 fun EjercicioModo(
     ejercicio: Ejercicio,
+    info: com.example.prueba.api.EjercicioDto? = null,
     onLibre: () -> Unit,
     onGuiado: () -> Unit,
     onBack: () -> Unit
@@ -288,6 +306,11 @@ fun EjercicioModo(
                 )
                 Text(text = ejercicio.desc, color = FretMuted, fontSize = 14.sp)
             }
+        }
+
+        // Objetivo y criterios de aprobación (práctica inteligente P1).
+        if (info != null) {
+            ObjetivoEjercicioCard(info)
         }
 
         Text(
@@ -478,6 +501,94 @@ fun CronometroView(
 }
 
 @Composable
+fun ObjetivoEjercicioCard(info: com.example.prueba.api.EjercicioDto) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = FretSurface),
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(text = "🎯 Objetivo", color = FretGold, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text(text = info.objetivo, color = FretText, fontSize = 14.sp, lineHeight = 19.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(text = "Dificultad ${info.dificultad}/5", color = FretMuted, fontSize = 12.sp)
+                Text(text = "~${info.duracionMin} min", color = FretMuted, fontSize = 12.sp)
+            }
+            info.criterios?.let { c ->
+                Text(
+                    text = "Apruebas con precisión ≥ ${(c.precisionMin * 100).toInt()}% " +
+                        "y consistencia ≥ ${(c.consistenciaMin * 100).toInt()}%.",
+                    color = FretMuted,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ResultadoAdaptativoCard(
+    aprobado: Boolean?,
+    actualizaciones: List<com.example.prueba.api.HabilidadUpdateDto>,
+    pasoCompletado: String?
+) {
+    val aprobadoColor = if (aprobado == true) Color(0xFF4ADE80) else Color(0xFFFB923C)
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = FretSurface),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (aprobado != null) {
+                Text(
+                    text = if (aprobado) "✅ ¡Ejercicio aprobado!" else "🔸 Sigue practicando para aprobar",
+                    color = aprobadoColor,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
+            }
+            if (pasoCompletado != null) {
+                Text(
+                    text = "🎉 ¡Completaste el paso «$pasoCompletado» de tu camino!",
+                    color = FretGold,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                    lineHeight = 19.sp
+                )
+            }
+            if (actualizaciones.isNotEmpty()) {
+                Text(text = "Habilidades entrenadas", color = FretMuted, fontSize = 12.sp)
+                actualizaciones.forEach { u ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = u.nombre + if (u.subioNivel) "  ⬆ nivel ${u.nivel}" else "",
+                            color = FretText,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = "+${(u.delta * 100).toInt()}%",
+                            color = Color(0xFF9EF01A),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun ResultadoView(
     ejercicio: Ejercicio,
     segundos: Int,
@@ -566,6 +677,16 @@ fun ResultadoView(
                     Text(text = "Duración", color = FretMuted, fontSize = 11.sp)
                 }
             }
+        }
+
+        // Resultado adaptativo (P1): aprobado + habilidades entrenadas.
+        val actualizaciones = resultado?.habilidadesActualizadas ?: emptyList()
+        if (resultado?.aprobado != null || actualizaciones.isNotEmpty()) {
+            ResultadoAdaptativoCard(
+                aprobado = resultado?.aprobado,
+                actualizaciones = actualizaciones,
+                pasoCompletado = resultado?.pasoCompletado?.nombre
+            )
         }
 
         Card(

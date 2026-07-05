@@ -2,12 +2,14 @@ package com.example.prueba.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.prueba.api.EjercicioDto
 import com.example.prueba.api.PracticaAnalyzeInfo
 import com.example.prueba.api.PracticaResult
 import com.example.prueba.api.WilfredoAnalyzeInfo
 import com.example.prueba.data.repository.AuthRepository
 import com.example.prueba.data.repository.ChatRepository
 import com.example.prueba.data.repository.PracticeRepository
+import com.example.prueba.data.repository.TrainerRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,6 +20,11 @@ class PracticeViewModel : ViewModel() {
     private val practiceRepository = PracticeRepository()
     private val chatRepository = ChatRepository()
     private val authRepository = AuthRepository
+    private val trainerRepository = TrainerRepository()
+
+    // Metadata pedagógica del ejercicio seleccionado (objetivo, criterios).
+    private val _ejercicioInfo = MutableStateFlow<EjercicioDto?>(null)
+    val ejercicioInfo: StateFlow<EjercicioDto?> = _ejercicioInfo.asStateFlow()
 
     private val _audioState = MutableStateFlow<UiState<PracticaAnalyzeInfo>>(UiState.Idle)
     val audioState: StateFlow<UiState<PracticaAnalyzeInfo>> = _audioState.asStateFlow()
@@ -32,6 +39,16 @@ class PracticeViewModel : ViewModel() {
     private var lastFile: File? = null
     private var lastDuracionSeg: Int = 0
     private var lastEjercicio: String = "practica_general"
+
+    /** Carga la metadata del ejercicio (objetivo, dificultad, criterios). */
+    fun loadEjercicio(id: String) {
+        viewModelScope.launch {
+            if (_ejercicioInfo.value?.id == id) return@launch
+            trainerRepository.getEjercicio(id)
+                .onSuccess { _ejercicioInfo.value = it }
+                .onFailure { _ejercicioInfo.value = null }
+        }
+    }
 
     fun analyzeAudio(file: File) {
         viewModelScope.launch {

@@ -50,7 +50,9 @@ sealed class Dest(val route: String, val label: String, val icon: ImageVector) {
 fun AppNav() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
+    // Ruta base sin argumentos opcionales (p. ej. "practice?ej=acordes" -> "practice"),
+    // para que el resaltado de la barra siga funcionando.
+    val currentRoute = navBackStackEntry?.destination?.route?.substringBefore("?")
     val showBars = currentRoute != Dest.Login.route &&
         currentRoute != Dest.Splash.route &&
         currentRoute != Dest.Onboarding.route
@@ -208,7 +210,16 @@ fun AppNav() {
                 composable(Dest.Search.route) {
                     SearchScreen(onSongClick = { id -> navController.navigate(songDetailRoute(id)) })
                 }
-                composable(Dest.Practice.route) { PracticeScreen() }
+                composable(
+                    route = "practice?ej={ej}",
+                    arguments = listOf(navArgument("ej") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    })
+                ) { entry ->
+                    val ej = entry.arguments?.getString("ej")?.takeIf { it.isNotBlank() }
+                    PracticeScreen(ejercicioPreseleccionado = ej)
+                }
                 composable(Dest.Tuner.route) { TunerScreen() }
                 composable(Dest.Progress.route) { ProgressScreen() }
                 composable(Dest.Wilfredo.route) { ChatScreen() }
