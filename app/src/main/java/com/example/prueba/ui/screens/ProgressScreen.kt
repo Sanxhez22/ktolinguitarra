@@ -44,9 +44,17 @@ import com.example.prueba.viewmodel.UiState
 const val META_DIARIA_MIN = 15f
 
 @Composable
-fun ProgressScreen(progressViewModel: ProgressViewModel = viewModel()) {
+fun ProgressScreen(
+    progressViewModel: ProgressViewModel = viewModel(),
+    skillsViewModel: com.example.prueba.viewmodel.SkillsViewModel = viewModel(),
+    onVerCamino: () -> Unit = {}
+) {
     val state by progressViewModel.progressState.collectAsState()
-    LaunchedEffect(Unit) { progressViewModel.loadProgress() }
+    val skillsState by skillsViewModel.skillsState.collectAsState()
+    LaunchedEffect(Unit) {
+        progressViewModel.loadProgress()
+        skillsViewModel.loadSkills()
+    }
 
     Column(
         modifier = Modifier
@@ -102,7 +110,115 @@ fun ProgressScreen(progressViewModel: ProgressViewModel = viewModel()) {
             }
         }
 
+        // Sección de habilidades (P1) + acceso al camino de aprendizaje.
+        (skillsState as? UiState.Success)?.let { SkillsSection(it.data) }
+        VerCaminoCard(onVerCamino)
+
         Spacer(modifier = Modifier.height(90.dp))
+    }
+}
+
+@Composable
+private fun SkillsSection(data: com.example.prueba.api.HabilidadesResponse) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = FretSurface),
+        shape = RoundedCornerShape(24.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "Tus habilidades",
+                color = FretGold,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+            data.habilidades.forEach { h ->
+                SkillBar(
+                    nombre = h.nombre,
+                    nivel = h.nivel,
+                    progreso = h.progreso.toFloat(),
+                    confianza = h.confianza.toFloat(),
+                    esDebil = h.id in data.debiles
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkillBar(
+    nombre: String,
+    nivel: Int,
+    progreso: Float,
+    confianza: Float,
+    esDebil: Boolean
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = nombre + if (esDebil) "  🎯" else "",
+                color = FretText,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text(text = "Nivel $nivel", color = FretGold, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        }
+        // Barra de progreso al siguiente nivel; el alpha refleja la confianza.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .background(Color(0xFF222831), RoundedCornerShape(50))
+        ) {
+            if (progreso > 0f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progreso.coerceIn(0.02f, 1f))
+                        .height(8.dp)
+                        .background(
+                            FretGold.copy(alpha = 0.4f + 0.6f * confianza.coerceIn(0f, 1f)),
+                            RoundedCornerShape(50)
+                        )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VerCaminoCard(onVerCamino: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF101722)),
+        shape = RoundedCornerShape(24.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("🗺️ Tu camino de aprendizaje", color = FretGold, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text(
+                text = "Mira tu ruta completa: qué has dominado y qué viene después.",
+                color = FretText,
+                fontSize = 14.sp,
+                lineHeight = 19.sp
+            )
+            Button(
+                onClick = onVerCamino,
+                colors = ButtonDefaults.buttonColors(containerColor = FretGold, contentColor = FretBlack),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Text("Ver mi camino", fontWeight = FontWeight.Bold)
+            }
+        }
     }
 }
 
