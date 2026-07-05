@@ -6,15 +6,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -24,10 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -36,13 +31,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.prueba.api.EntrenadorResponse
+import com.example.prueba.api.HabilidadResumenDto
 import com.example.prueba.data.repository.AuthRepository
 import com.example.prueba.ui.theme.FretBlack
 import com.example.prueba.ui.theme.FretGold
 import com.example.prueba.ui.theme.FretMuted
 import com.example.prueba.ui.theme.FretSurface
 import com.example.prueba.ui.theme.FretText
-import com.example.prueba.viewmodel.HomeData
 import com.example.prueba.viewmodel.HomeViewModel
 import com.example.prueba.viewmodel.UiState
 import kotlinx.coroutines.launch
@@ -55,9 +51,7 @@ fun HomeScreen(
 ) {
     val state by homeViewModel.homeState.collectAsState()
     LaunchedEffect(Unit) { homeViewModel.loadHomeData() }
-    val data = (state as? UiState.Success)?.data ?: HomeData()
     val scope = rememberCoroutineScope()
-    var showRoutine by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -67,111 +61,94 @@ fun HomeScreen(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        HomeHeader(
-            userName = data.userName,
-            aiLevel = data.aiLevel,
-            minutesToday = data.minutesToday,
-            onLogout = { scope.launch { AuthRepository.signOut(); onLogout() } }
-        )
-        ContinuePracticeCard(
-            lastExercise = data.lastExercise,
-            completedSessions = data.completedSessions,
-            onSeguir = { onNavigate("practice") },
-            onVerRutina = { showRoutine = true }
-        )
-        StatsRow(
-            streak = data.streak,
-            accuracy = data.accuracy,
-            completed = data.completedSessions
-        )
-        DailyGoalCard(minutesToday = data.minutesToday)
-        NextExerciseCard(
-            nextExercise = data.nextExercise,
-            advice = data.routineAdvice,
-            onPracticar = { onNavigate("practice") }
-        )
-        WilfredoTipCard(
-            tip = data.wilfredoTip,
-            loading = data.isTipLoading || state is UiState.Loading
-        )
-        Spacer(modifier = Modifier.height(90.dp))
-    }
-
-    if (showRoutine) {
-        RoutineDialog(
-            exercises = data.routineExercises,
-            duration = data.routineDuration,
-            advice = data.routineAdvice,
-            onDismiss = { showRoutine = false },
-            onPracticar = {
-                showRoutine = false
-                onNavigate("practice")
+        when (val s = state) {
+            is UiState.Success -> {
+                val data = s.data
+                TrainerHeader(
+                    userName = data.userName,
+                    racha = data.entrenador.racha,
+                    onLogout = { scope.launch { AuthRepository.signOut(); onLogout() } }
+                )
+                data.entrenador.celebracion?.let { CelebracionBanner(it.titulo, it.mensaje) }
+                PracticaDeHoyCard(data.entrenador, onNavigate = onNavigate)
+                ObjetivoDiaCard(data.entrenador)
+                HabilidadesResumenCard(
+                    debiles = data.entrenador.habilidadesDebiles,
+                    fuertes = data.entrenador.habilidadesFuertes,
+                    onVerProgreso = { onNavigate("progress") }
+                )
+                data.entrenador.proximoLogro?.let { ProximoLogroCard(it.titulo, it.detalle) }
+                ConsejoWilfredoCard(data.entrenador.consejo)
+                Spacer(modifier = Modifier.height(90.dp))
             }
-        )
+
+            is UiState.Error -> HomeErrorState(s.message, onReintentar = { homeViewModel.loadHomeData() })
+
+            else -> Box(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 80.dp),
+                contentAlignment = Alignment.Center
+            ) { CircularProgressIndicator(color = FretGold) }
+        }
     }
 }
 
 @Composable
-fun HomeHeader(
-    userName: String = "Guitarrista",
-    aiLevel: String = "principiante",
-    minutesToday: Float = 0f,
-    onLogout: () -> Unit = {}
-) {
-    val nivelDisplay = aiLevel.replaceFirstChar { it.uppercase() }
-    val faltan = (META_DIARIA_MIN - minutesToday).toInt()
-    Column(
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+private fun TrainerHeader(userName: String, racha: Int, onLogout: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Hola, $userName 👋",
                 color = FretText,
                 style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
+                fontWeight = FontWeight.Bold
             )
-            TextButton(onClick = onLogout) {
-                Text("Salir", color = FretMuted, fontSize = 13.sp)
+            Text(
+                text = "Soy Wilfredo, tu entrenador. Esto es lo que toca hoy.",
+                color = FretMuted,
+                fontSize = 14.sp
+            )
+        }
+        if (racha > 0) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.LocalFireDepartment, contentDescription = "Racha", tint = Color(0xFFE94584))
+                Text(text = "$racha", color = FretText, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }
         }
-
-        Text(
-            text = when {
-                minutesToday >= META_DIARIA_MIN -> "¡Objetivo de hoy completado! 🎉"
-                minutesToday > 0f -> "Te faltan $faltan min para tu objetivo de hoy."
-                else -> "Aún no practicas hoy. ¡Tu guitarra te espera!"
-            },
-            color = FretMuted,
-            fontSize = 15.sp
-        )
-
-        Text(
-            text = "Nivel actual: $nivelDisplay",
-            color = FretGold,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+        TextButton(onClick = onLogout) { Text("Salir", color = FretMuted, fontSize = 12.sp) }
     }
 }
 
 @Composable
-fun ContinuePracticeCard(
-    lastExercise: String? = null,
-    completedSessions: Int = 0,
-    onSeguir: () -> Unit = {},
-    onVerRutina: () -> Unit = {}
-) {
-    val gradient = Brush.horizontalGradient(
-        colors = listOf(
-            Color(0xFF1A2233),
-            Color(0xFF0F1725)
-        )
-    )
+private fun CelebracionBanner(titulo: String, mensaje: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A29)),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(text = "🎉 $titulo", color = Color(0xFF4ADE80), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(text = mensaje, color = FretText, fontSize = 14.sp, lineHeight = 19.sp)
+        }
+    }
+}
+
+@Composable
+private fun PracticaDeHoyCard(entrenador: EntrenadorResponse, onNavigate: (String) -> Unit) {
+    val rec = entrenador.recomendacion
+    val esDescanso = rec.tipo == "descanso"
+    val gradient = Brush.horizontalGradient(listOf(Color(0xFF1A2233), Color(0xFF0F1725)))
+
+    val etiquetaTipo = when (rec.tipo) {
+        "repetir" -> "🔁 A repetir"
+        "subir_dificultad" -> "🚀 Subimos el nivel"
+        "bajar_dificultad" -> "🐢 Afianzando la base"
+        "descanso" -> "🌙 Momento de descanso"
+        else -> "🎯 Tu práctica de hoy"
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -180,201 +157,81 @@ fun ContinuePracticeCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
     ) {
         Column(
-            modifier = Modifier
-                .background(gradient)
-                .padding(20.dp),
+            modifier = Modifier.background(gradient).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    tint = FretGold
-                )
-                Text(
-                    text = if (completedSessions > 0) "Continuar práctica" else "Empieza a practicar",
-                    color = FretText,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            Text(text = etiquetaTipo, color = FretGold, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
 
             Text(
-                text = when {
-                    lastExercise != null -> "Tu última práctica fue de $lastExercise. Sigue con una sesión más para consolidar lo aprendido."
-                    completedSessions > 0 -> "Ya llevas $completedSessions sesiones registradas. ¡Una más hoy!"
-                    else -> "Todavía no registras ninguna sesión. Empieza tu primera práctica y Wilfredo evaluará tu ejecución."
-                },
-                color = FretMuted,
-                fontSize = 14.sp,
-                lineHeight = 20.sp
-            )
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Button(
-                    onClick = onSeguir,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = FretGold,
-                        contentColor = FretBlack
-                    )
-                ) {
-                    Text(if (completedSessions > 0) "Seguir" else "Empezar")
-                }
-
-                OutlinedButton(onClick = onVerRutina) {
-                    Text("Ver rutina")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun StatsRow(
-    streak: Int = 0,
-    accuracy: Int = 0,
-    completed: Int = 0
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        MiniStatCard(
-            modifier = Modifier.weight(1f),
-            title = "Racha",
-            value = "$streak días",
-            accent = Color(0xFFE94584),
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.Star,
-                    contentDescription = null,
-                    tint = Color(0xFFE94584)
-                )
-            }
-        )
-
-        MiniStatCard(
-            modifier = Modifier.weight(1f),
-            title = "Precisión",
-            value = "$accuracy%",
-            accent = Color(0xFF9EF01A),
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.MusicNote,
-                    contentDescription = null,
-                    tint = Color(0xFF9EF01A)
-                )
-            }
-        )
-
-        MiniStatCard(
-            modifier = Modifier.weight(1f),
-            title = "Completadas",
-            value = "$completed",
-            accent = Color(0xFF5AC8FA),
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = Color(0xFF5AC8FA)
-                )
-            }
-        )
-    }
-}
-
-@Composable
-fun MiniStatCard(
-    modifier: Modifier = Modifier,
-    title: String,
-    value: String,
-    accent: Color,
-    icon: @Composable () -> Unit
-) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = FretSurface),
-        shape = RoundedCornerShape(20.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            icon()
-
-            Text(
-                text = value,
+                text = entrenador.ejercicio?.nombre ?: if (esDescanso) "Descansa hoy" else "Práctica libre",
                 color = FretText,
-                fontWeight = FontWeight.Bold,
-                fontSize = 20.sp
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold
             )
 
-            Text(
-                text = title,
-                color = FretMuted,
-                fontSize = 12.sp
-            )
+            if (!esDescanso && rec.dificultad != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text("Dificultad ${rec.dificultad}/5", color = FretMuted, fontSize = 13.sp)
+                    rec.duracionMin?.let { Text("~$it min", color = FretMuted, fontSize = 13.sp) }
+                }
+            }
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .background(accent, RoundedCornerShape(50))
-            )
+            // El "por qué" de la recomendación (motor explicable).
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0x22FFFFFF)),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("¿Por qué?", color = FretGold, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text(text = rec.razon, color = FretText, fontSize = 13.sp, lineHeight = 18.sp)
+                }
+            }
+
+            if (!esDescanso) {
+                Button(
+                    onClick = {
+                        val ej = rec.ejercicioId
+                        onNavigate(if (ej != null) "practice?ej=$ej" else "practice")
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = FretGold, contentColor = FretBlack),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Empezar", fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }
 
 @Composable
-fun DailyGoalCard(minutesToday: Float = 0f) {
-    val progress = (minutesToday / META_DIARIA_MIN).coerceIn(0f, 1f)
+private fun ObjetivoDiaCard(entrenador: EntrenadorResponse) {
+    val o = entrenador.objetivoDia
+    val progress = if (o.metaMin > 0) (o.minutosHoy / o.metaMin).coerceIn(0.0, 1.0).toFloat() else 0f
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = FretSurface),
         shape = RoundedCornerShape(24.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Objetivo del día", color = FretGold, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             Text(
-                text = "Objetivo del día",
-                color = FretGold,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
-            )
-
-            Text(
-                text = "Completa ${META_DIARIA_MIN.toInt()} minutos de práctica para mantener tu progreso.",
+                text = if (o.cumplido) "¡Meta cumplida! Practicaste ${o.minutosHoy.toInt()} min hoy. 🎯"
+                else "Te faltan ${o.restanteMin.toInt()} min de ${o.metaMin} para tu meta de hoy.",
                 color = FretText,
                 fontSize = 15.sp,
                 lineHeight = 20.sp
             )
-
-            Text(
-                text = "Progreso de hoy: ${minutesToday.toInt()} / ${META_DIARIA_MIN.toInt()} min",
-                color = FretMuted,
-                fontSize = 14.sp
-            )
-
+            Text("Progreso de hoy: ${o.minutosHoy.toInt()} / ${o.metaMin} min", color = FretMuted, fontSize = 14.sp)
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(10.dp)
+                modifier = Modifier.fillMaxWidth().height(10.dp)
                     .background(Color(0xFF222831), RoundedCornerShape(50))
             ) {
                 if (progress > 0f) {
                     Box(
-                        modifier = Modifier
-                            .fillMaxWidth(progress)
-                            .height(10.dp)
+                        modifier = Modifier.fillMaxWidth(progress).height(10.dp)
                             .background(FretGold, RoundedCornerShape(50))
                     )
                 }
@@ -384,10 +241,10 @@ fun DailyGoalCard(minutesToday: Float = 0f) {
 }
 
 @Composable
-fun NextExerciseCard(
-    nextExercise: String? = null,
-    advice: String = "",
-    onPracticar: () -> Unit = {}
+private fun HabilidadesResumenCard(
+    debiles: List<HabilidadResumenDto>,
+    fuertes: List<HabilidadResumenDto>,
+    onVerProgreso: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -395,47 +252,37 @@ fun NextExerciseCard(
         shape = RoundedCornerShape(24.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text(
-                text = "Siguiente ejercicio recomendado",
-                color = FretGold,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
-            )
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Tus habilidades", color = FretGold, fontWeight = FontWeight.Bold, fontSize = 18.sp)
 
-            if (nextExercise != null) {
+            if (fuertes.isNotEmpty()) {
+                Text("💪 Más fuertes", color = FretMuted, fontSize = 13.sp)
+                SkillChips(fuertes, Color(0xFF9EF01A))
+            }
+            Text("🎯 A reforzar", color = FretMuted, fontSize = 13.sp)
+            SkillChips(debiles, Color(0xFFE94584))
+
+            TextButton(onClick = onVerProgreso) {
+                Text("Ver todo mi progreso →", color = FretGold, fontSize = 13.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkillChips(skills: List<HabilidadResumenDto>, accent: Color) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        skills.forEach { s ->
+            Card(
+                colors = CardDefaults.cardColors(containerColor = accent.copy(alpha = 0.15f)),
+                shape = RoundedCornerShape(50)
+            ) {
                 Text(
-                    text = "🎯 $nextExercise",
-                    color = FretText,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 16.sp
-                )
-                if (advice.isNotBlank()) {
-                    Text(
-                        text = advice,
-                        color = FretMuted,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp
-                    )
-                }
-                Button(
-                    onClick = onPracticar,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = FretGold,
-                        contentColor = FretBlack
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Text("Practicar ahora", fontWeight = FontWeight.Bold)
-                }
-            } else {
-                Text(
-                    text = "Wilfredo está preparando tu recomendación...",
-                    color = FretMuted,
-                    fontSize = 14.sp
+                    text = "${s.nombre} · N${s.nivel}",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    color = accent,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }
@@ -443,30 +290,33 @@ fun NextExerciseCard(
 }
 
 @Composable
-fun WilfredoTipCard(tip: String = "", loading: Boolean = false) {
+private fun ProximoLogroCard(titulo: String, detalle: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF101722)),
         shape = RoundedCornerShape(24.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "Consejo de Wilfredo",
-                color = FretGold,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
-            )
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("🏅 Próximo logro", color = FretGold, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text(titulo, color = FretText, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+            Text(detalle, color = FretMuted, fontSize = 14.sp, lineHeight = 19.sp)
+        }
+    }
+}
 
+@Composable
+private fun ConsejoWilfredoCard(consejo: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF101722)),
+        shape = RoundedCornerShape(24.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Consejo de Wilfredo", color = FretGold, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             Text(
-                text = when {
-                    tip.isNotBlank() -> tip
-                    loading -> "Wilfredo está preparando tu consejo de hoy... 🎸"
-                    else -> "Practica un poco cada día: la constancia vale más que las sesiones largas. 🎸"
-                },
+                text = consejo.ifBlank { "Practica un poco cada día: la constancia vale más que las sesiones largas. 🎸" },
                 color = FretText,
                 fontSize = 14.sp,
                 lineHeight = 20.sp
@@ -476,71 +326,20 @@ fun WilfredoTipCard(tip: String = "", loading: Boolean = false) {
 }
 
 @Composable
-fun RoutineDialog(
-    exercises: List<String>,
-    duration: String,
-    advice: String,
-    onDismiss: () -> Unit,
-    onPracticar: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = FretSurface,
-        title = {
-            Text(
-                text = "Tu rutina de hoy",
-                color = FretGold,
-                fontWeight = FontWeight.Bold
-            )
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (exercises.isEmpty()) {
-                    Text(
-                        text = "Wilfredo está preparando tu rutina...",
-                        color = FretMuted
-                    )
-                } else {
-                    exercises.forEachIndexed { i, ej ->
-                        Text(
-                            text = "${i + 1}. $ej",
-                            color = FretText,
-                            fontSize = 15.sp
-                        )
-                    }
-                    if (duration.isNotBlank()) {
-                        Text(
-                            text = "⏱️ Duración sugerida: $duration",
-                            color = FretMuted,
-                            fontSize = 13.sp
-                        )
-                    }
-                    if (advice.isNotBlank()) {
-                        Text(
-                            text = "💡 $advice",
-                            color = FretMuted,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
+private fun HomeErrorState(mensaje: String, onReintentar: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = FretSurface),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("No se pudo cargar tu entrenador", color = FretText, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            Text(mensaje, color = FretMuted, fontSize = 14.sp)
             Button(
-                onClick = onPracticar,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = FretGold,
-                    contentColor = FretBlack
-                )
-            ) {
-                Text("Practicar")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cerrar", color = FretMuted)
-            }
+                onClick = onReintentar,
+                colors = ButtonDefaults.buttonColors(containerColor = FretGold, contentColor = FretBlack),
+                shape = RoundedCornerShape(16.dp)
+            ) { Text("Reintentar", fontWeight = FontWeight.Bold) }
         }
-    )
+    }
 }
