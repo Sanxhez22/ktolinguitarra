@@ -40,9 +40,14 @@ fun SplashScreen(navController: NavController) {
     LaunchedEffect(true) {
         scaleAnim.animateTo(1f, animationSpec = tween(650, easing = FastOutSlowInEasing))
         delay(1000)
-        // Verifica sesión persistida y enruta a Home o Login.
+        // Verifica sesión persistida y enruta: sin sesión → Login;
+        // con sesión pero onboarding pendiente → Onboarding; si no → Home.
         val session = AuthRepository.restoreSession().getOrNull()
-        val destino = if (session != null) "home" else "login"
+        val destino = when {
+            session == null -> "login"
+            !session.onboardingCompletado -> "onboarding"
+            else -> "home"
+        }
         navController.navigate(destino) {
             popUpTo("splash") { inclusive = true }
         }

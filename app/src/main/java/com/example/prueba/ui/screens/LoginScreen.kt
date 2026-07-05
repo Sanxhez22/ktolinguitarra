@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(
-    onLoginSuccess: () -> Unit,
+    onLoginSuccess: (onboardingCompletado: Boolean) -> Unit,
     viewModel: LoginViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -40,10 +40,11 @@ fun LoginScreen(
     val loading = loginState is UiState.Loading
     val error = (loginState as? UiState.Error)?.message
 
-    // Navega al Home cuando la autenticación es exitosa.
+    // Navega a Home u Onboarding cuando la autenticación es exitosa.
     LaunchedEffect(loginState) {
-        if (loginState is UiState.Success) {
-            onLoginSuccess()
+        val s = loginState
+        if (s is UiState.Success) {
+            onLoginSuccess(s.data.onboardingCompletado)
             viewModel.resetState()
         }
     }

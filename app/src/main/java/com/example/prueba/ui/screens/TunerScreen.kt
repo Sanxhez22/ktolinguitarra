@@ -31,7 +31,7 @@ import kotlin.math.roundToInt
 
 data class Cuerda(val nombre: String, val freq: Float, val numero: String)
 
-private val CUERDAS = listOf(
+internal val CUERDAS = listOf(
     Cuerda("E2", 82.41f, "6ª"),
     Cuerda("A2", 110.0f, "5ª"),
     Cuerda("D3", 146.83f, "4ª"),
@@ -43,7 +43,7 @@ private val CUERDAS = listOf(
 private val NOTE_NAMES = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 
 /** Convierte una frecuencia en (nota, octava, cents respecto al semitono más cercano). */
-private fun frequencyToNote(freq: Float): Triple<String, Int, Float> {
+internal fun frequencyToNote(freq: Float): Triple<String, Int, Float> {
     val midi = 69.0 + 12.0 * (ln(freq / 440.0) / ln(2.0))
     val midiR = midi.roundToInt()
     val cents = ((midi - midiR) * 100.0).toFloat()
@@ -53,7 +53,7 @@ private fun frequencyToNote(freq: Float): Triple<String, Int, Float> {
 }
 
 /** Cuerda de guitarra más cercana a la frecuencia detectada. */
-private fun nearestString(freq: Float): Cuerda? =
+internal fun nearestString(freq: Float): Cuerda? =
     CUERDAS.minByOrNull { abs(it.freq - freq) }
 
 enum class Modo { AFINADOR, ACORDES }

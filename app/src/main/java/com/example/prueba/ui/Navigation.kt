@@ -40,6 +40,7 @@ sealed class Dest(val route: String, val label: String, val icon: ImageVector) {
     object Wilfredo : Dest("wilfredo", "Wilfredo", Icons.Filled.Person)
     object Login : Dest("login", "Login", Icons.Filled.Person)
     object Splash : Dest("splash", "Splash", Icons.Filled.Home)
+    object Onboarding : Dest("onboarding", "Onboarding", Icons.Filled.Star)
     object SongDetail : Dest("songDetail/{songId}", "Detalle", Icons.Filled.MusicNote)
 
 }
@@ -50,7 +51,9 @@ fun AppNav() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val showBars = currentRoute != Dest.Login.route && currentRoute != Dest.Splash.route
+    val showBars = currentRoute != Dest.Login.route &&
+        currentRoute != Dest.Splash.route &&
+        currentRoute != Dest.Onboarding.route
 
     val bottomItems = listOf(
         Dest.Home,
@@ -171,9 +174,22 @@ fun AppNav() {
 
                 composable(Dest.Login.route) {
                     LoginScreen(
-                        onLoginSuccess = {
-                            navController.navigate(Dest.Home.route) {
+                        // El onboarding solo aparece la primera vez: si el
+                        // usuario ya lo completó va directo al Home.
+                        onLoginSuccess = { onboardingCompletado ->
+                            val destino = if (onboardingCompletado) Dest.Home.route else Dest.Onboarding.route
+                            navController.navigate(destino) {
                                 popUpTo(Dest.Login.route) { inclusive = true }
+                            }
+                        }
+                    )
+                }
+
+                composable(Dest.Onboarding.route) {
+                    OnboardingScreen(
+                        onFinished = {
+                            navController.navigate(Dest.Home.route) {
+                                popUpTo(0) { inclusive = true }
                             }
                         }
                     )
