@@ -17,4 +17,10 @@ interface AuthService {
 
     @GET("/auth/perfil/{userId}")
     suspend fun getPerfil(@Path("userId") userId: String): Response<UserProfileDto>
+
+    @POST("/auth/onboarding/{userId}")
+    suspend fun saveOnboarding(
+        @Path("userId") userId: String,
+        @Body req: OnboardingRequest
+    ): Response<UserProfileDto>
 }

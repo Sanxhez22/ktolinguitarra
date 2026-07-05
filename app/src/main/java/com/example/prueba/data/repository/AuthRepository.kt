@@ -3,6 +3,7 @@ package com.example.prueba.data.repository
 import com.example.prueba.FretMindApp
 import com.example.prueba.api.ApiClient
 import com.example.prueba.api.GoogleLoginRequest
+import com.example.prueba.api.OnboardingRequest
 import com.example.prueba.api.UserProfileDto
 import com.example.prueba.data.local.SessionDataStore
 import com.example.prueba.data.model.UserSession
@@ -46,6 +47,32 @@ object AuthRepository {
         }
     }
 
+    /**
+     * Envía las respuestas del onboarding (o la marca de finalización) al
+     * backend y sincroniza la sesión local con el perfil resultante
+     * (el nivel puede cambiar según la experiencia declarada).
+     */
+    suspend fun saveOnboarding(
+        userId: String,
+        experiencia: String? = null,
+        objetivo: String? = null,
+        completado: Boolean? = null
+    ): Result<UserSession> = runCatching {
+        val response = api.saveOnboarding(
+            userId,
+            OnboardingRequest(experiencia = experiencia, objetivo = objetivo, completado = completado)
+        )
+        val body = response.body()
+        if (response.isSuccessful && body != null) {
+            val token = store.read()?.token ?: ""
+            val session = body.toSession(token)
+            store.save(session)
+            session
+        } else {
+            throw Exception("No se pudo guardar el onboarding (${response.code()})")
+        }
+    }
+
     suspend fun signOut(): Result<Unit> = runCatching { store.clear() }
 }
 
@@ -55,5 +82,6 @@ private fun UserProfileDto.toSession(token: String) = UserSession(
     email = email ?: "",
     foto = foto,
     nivel = nivel,
-    token = token
+    token = token,
+    onboardingCompletado = onboardingCompletado
 )

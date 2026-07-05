@@ -25,16 +25,25 @@ class PracticeRepository {
         }
     }
 
-    suspend fun submitPractice(userId: String, file: File): Result<PracticaResult> = runCatching {
+    suspend fun submitPractice(
+        userId: String,
+        file: File,
+        duracionSeg: Int = 0,
+        ejercicio: String = "practica_general"
+    ): Result<PracticaResult> = runCatching {
         val mediaType = "audio/wav".toMediaTypeOrNull()
         val requestBody = file.readBytes().toRequestBody(mediaType)
         val part = MultipartBody.Part.createFormData("file", file.name, requestBody)
-        val response = api.practica(userId, part)
+        val response = api.practica(userId, part, duracionSeg, ejercicio)
         val body = response.body()
         if (response.isSuccessful && body != null) {
             body
         } else {
-            throw Exception("Error al enviar práctica")
+            // FastAPI devuelve los errores como {"detail": "..."}.
+            val detail = response.errorBody()?.string()?.let { raw ->
+                runCatching { org.json.JSONObject(raw).getString("detail") }.getOrNull()
+            }
+            throw Exception(detail ?: "Error al enviar práctica (${response.code()})")
         }
     }
 }

@@ -1,26 +1,25 @@
 package com.example.prueba.data.repository
 
-import com.example.prueba.api.PracticaResult
+import com.example.prueba.api.ApiClient
+import com.example.prueba.api.ProgresoDto
 
 /**
  * Repositorio de progreso del usuario.
  *
- * DEUDA TÉCNICA (auditoría A2): el backend aún NO expone un endpoint de
- * lectura de progreso (p. ej. GET /progreso/{user_id}). La versión anterior
- * posteaba un WAV vacío de 1KB a POST /practica para "obtener" progreso, lo
- * que: (a) ensuciaba MongoDB con sesiones basura en cada carga de pantalla y
- * (b) fallaba al intentar analizar un audio inválido.
- *
- * Hasta que exista ese endpoint, devolvemos un fallo controlado: las pantallas
- * (Home/Progress) ya manejan onFailure y muestran sus valores por defecto.
+ * Lee GET /progreso/{user_id}: agregados reales calculados en MongoDB
+ * (sesiones, promedios, racha, minutos, historial). Un usuario nuevo
+ * recibe todo en cero.
  */
 class ProgressRepository {
+    private val api = ApiClient.fastApiService
 
-    @Suppress("UNUSED_PARAMETER")
-    suspend fun getUserProgress(userId: String): Result<PracticaResult> =
-        Result.failure(
-            UnsupportedOperationException(
-                "Endpoint de progreso no disponible aún (ver auditoría A2)."
-            )
-        )
+    suspend fun getUserProgress(userId: String): Result<ProgresoDto> = runCatching {
+        val response = api.progreso(userId)
+        val body = response.body()
+        if (response.isSuccessful && body != null) {
+            body
+        } else {
+            throw Exception("No se pudo cargar el progreso (${response.code()})")
+        }
+    }
 }

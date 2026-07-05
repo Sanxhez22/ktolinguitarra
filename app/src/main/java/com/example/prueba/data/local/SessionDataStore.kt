@@ -1,6 +1,7 @@
 package com.example.prueba.data.local
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -22,6 +23,7 @@ class SessionDataStore(private val context: Context) {
         val FOTO = stringPreferencesKey("foto")
         val NIVEL = stringPreferencesKey("nivel")
         val TOKEN = stringPreferencesKey("token")
+        val ONBOARDING = booleanPreferencesKey("onboarding_completado")
     }
 
     suspend fun save(session: UserSession) {
@@ -32,6 +34,7 @@ class SessionDataStore(private val context: Context) {
             if (session.foto != null) p[Keys.FOTO] = session.foto else p.remove(Keys.FOTO)
             p[Keys.NIVEL] = session.nivel
             p[Keys.TOKEN] = session.token
+            p[Keys.ONBOARDING] = session.onboardingCompletado
         }
     }
 
@@ -44,7 +47,8 @@ class SessionDataStore(private val context: Context) {
             email = p[Keys.EMAIL] ?: "",
             foto = p[Keys.FOTO],
             nivel = p[Keys.NIVEL] ?: "principiante",
-            token = p[Keys.TOKEN] ?: ""
+            token = p[Keys.TOKEN] ?: "",
+            onboardingCompletado = p[Keys.ONBOARDING] ?: false
         )
     }
 

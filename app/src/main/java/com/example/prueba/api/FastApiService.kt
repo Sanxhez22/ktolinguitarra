@@ -76,6 +76,15 @@ interface FastApiService {
     @POST("/practica")
     suspend fun practica(
         @Query("user_id") userId: String,
-        @Part file: MultipartBody.Part
+        @Part file: MultipartBody.Part,
+        @Query("duracion_seg") duracionSeg: Int = 0,
+        @Query("ejercicio") ejercicio: String = "practica_general"
     ): Response<PracticaResult>
+
+    // ==========================================
+    // PROGRESO ENDPOINTS
+    // ==========================================
+
+    @GET("/progreso/{userId}")
+    suspend fun progreso(@Path("userId") userId: String): Response<ProgresoDto>
 }

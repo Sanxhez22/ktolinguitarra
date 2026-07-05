@@ -209,10 +209,46 @@ data class PracticaAnalyzeInfo(
 )
 
 // ==========================================
+// PROGRESO DOMAIN
+// ==========================================
+
+// Sesión individual dentro del historial de /progreso/{user_id}.
+data class SesionHistorialDto(
+    val fecha: String? = null,
+    val ejercicio: String? = null,
+    val precision: Double = 0.0,
+    val consistencia: Double = 0.0,
+    val duracionSeg: Int = 0
+)
+
+// Respuesta de GET /progreso/{user_id}: todo agregado desde MongoDB.
+data class ProgresoDto(
+    val userId: String,
+    val nivel: String = "principiante",
+    val sesiones: Int = 0,
+    val precisionPromedio: Double = 0.0,
+    val consistenciaPromedio: Double = 0.0,
+    val rachaDias: Int = 0,
+    val minutosHoy: Double = 0.0,
+    val minutosTotales: Double = 0.0,
+    val ejerciciosCompletados: Int = 0,
+    val ultimaPractica: String? = null,
+    val historial: List<SesionHistorialDto> = emptyList()
+)
+
+// ==========================================
 // AUTH DOMAIN
 // ==========================================
 
 data class GoogleLoginRequest(val idToken: String)
+
+// Cuerpo de POST /auth/onboarding/{user_id}. Todos los campos opcionales:
+// se envían las respuestas al terminar las preguntas y `completado` al final.
+data class OnboardingRequest(
+    val experiencia: String? = null,
+    val objetivo: String? = null,
+    val completado: Boolean? = null
+)
 
 data class EstadisticasDto(
     val sesiones: Int = 0,
@@ -227,6 +263,9 @@ data class UserProfileDto(
     val email: String? = null,
     val foto: String? = null,
     val nivel: String = "principiante",
+    val experiencia: String? = null,
+    val objetivo: String? = null,
+    val onboardingCompletado: Boolean = false,
     val fechaRegistro: String? = null,
     val ultimaSesion: String? = null,
     val estadisticas: EstadisticasDto? = null

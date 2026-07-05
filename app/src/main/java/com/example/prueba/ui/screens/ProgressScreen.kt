@@ -10,8 +10,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -27,25 +30,23 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.prueba.ui.theme.FretBlack
 import com.example.prueba.ui.theme.FretGold
 import com.example.prueba.ui.theme.FretMuted
 import com.example.prueba.ui.theme.FretSurface
 import com.example.prueba.ui.theme.FretText
+import com.example.prueba.viewmodel.ProgressData
+import com.example.prueba.viewmodel.ProgressViewModel
+import com.example.prueba.viewmodel.UiState
+
+/** Meta diaria de práctica en minutos (objetivo del día en Home/Progreso). */
+const val META_DIARIA_MIN = 15f
 
 @Composable
-fun ProgressScreen() {
-    val userName = "José Luis"
-    val aiLevel = "Intermedio"
-
-    // Datos ficticios
-    val techniqueProgress = 0.82f
-    val notesAccuracyProgress = 0.74f
-    val playerLevelProgress = 0.67f
-
-    val techniqueHistory = listOf(35f, 42f, 48f, 55f, 61f, 70f, 82f)
-    val notesAccuracyHistory = listOf(25f, 38f, 41f, 50f, 58f, 64f, 74f)
-    val playerLevelHistory = listOf(20f, 28f, 34f, 39f, 48f, 56f, 67f)
+fun ProgressScreen(progressViewModel: ProgressViewModel = viewModel()) {
+    val state by progressViewModel.progressState.collectAsState()
+    LaunchedEffect(Unit) { progressViewModel.loadProgress() }
 
     Column(
         modifier = Modifier
@@ -55,26 +56,107 @@ fun ProgressScreen() {
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        HeaderSection(
-            userName = userName,
-            aiLevel = aiLevel
-        )
+        when (val s = state) {
+            is UiState.Success -> ProgressContent(s.data)
 
-        RingsCard(
-            techniqueProgress = techniqueProgress,
-            notesAccuracyProgress = notesAccuracyProgress,
-            playerLevelProgress = playerLevelProgress,
-            techniqueHistory = techniqueHistory,
-            notesAccuracyHistory = notesAccuracyHistory,
-            playerLevelHistory = playerLevelHistory
-        )
+            is UiState.Error -> {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = FretSurface),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "No se pudo cargar tu progreso",
+                            color = FretText,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp
+                        )
+                        Text(text = s.message, color = FretMuted, fontSize = 14.sp)
+                        Button(
+                            onClick = { progressViewModel.loadProgress() },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = FretGold,
+                                contentColor = FretBlack
+                            ),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Text("Reintentar", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
 
-        StatsGrid()
-
-        AiSummaryCard()
+            else -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 60.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = FretGold)
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(90.dp))
     }
+}
+
+@Composable
+private fun ProgressContent(data: ProgressData) {
+    val dailyGoalProgress = (data.minutesToday / META_DIARIA_MIN).coerceIn(0f, 1f)
+    val overallPct = ((data.precisionAvg + data.consistencyAvg) / 2f * 100).toInt()
+
+    HeaderSection(
+        userName = data.userName,
+        aiLevel = data.aiLevel.replaceFirstChar { it.uppercase() }
+    )
+
+    if (data.sessions == 0) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = FretGold.copy(alpha = 0.12f)),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "Todavía no hay datos",
+                    color = FretGold,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp
+                )
+                Text(
+                    text = "Completa tu primera práctica y tu progreso real aparecerá aquí.",
+                    color = FretText,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+            }
+        }
+    }
+
+    RingsCard(
+        precision = data.precisionAvg,
+        consistency = data.consistencyAvg,
+        dailyGoal = dailyGoalProgress,
+        overallPct = overallPct,
+        precisionHistory = data.precisionHistory,
+        consistencyHistory = data.consistencyHistory,
+        minutesToday = data.minutesToday
+    )
+
+    StatsGrid(
+        sessions = data.sessions,
+        minutesTotal = data.minutesTotal,
+        streak = data.streak,
+        exercisesCompleted = data.exercisesCompleted
+    )
+
+    AiSummaryCard(summary = data.wilfredoSummary)
 }
 
 @Composable
@@ -100,7 +182,7 @@ fun HeaderSection(
         )
 
         Text(
-            text = "Nivel IA: $aiLevel",
+            text = "Nivel: $aiLevel",
             color = FretMuted,
             fontSize = 16.sp
         )
@@ -109,12 +191,13 @@ fun HeaderSection(
 
 @Composable
 fun RingsCard(
-    techniqueProgress: Float,
-    notesAccuracyProgress: Float,
-    playerLevelProgress: Float,
-    techniqueHistory: List<Float>,
-    notesAccuracyHistory: List<Float>,
-    playerLevelHistory: List<Float>
+    precision: Float,
+    consistency: Float,
+    dailyGoal: Float,
+    overallPct: Int,
+    precisionHistory: List<Float>,
+    consistencyHistory: List<Float>,
+    minutesToday: Float
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -135,9 +218,10 @@ fun RingsCard(
             )
 
             TripleRingProgress(
-                outerProgress = techniqueProgress,
-                middleProgress = notesAccuracyProgress,
-                innerProgress = playerLevelProgress
+                outerProgress = precision,
+                middleProgress = consistency,
+                innerProgress = dailyGoal,
+                centerPct = overallPct
             )
 
             Column(
@@ -145,24 +229,24 @@ fun RingsCard(
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 RingLegendWithMiniChart(
-                    title = "Técnica",
-                    progress = techniqueProgress,
+                    title = "Precisión",
+                    progress = precision,
                     color = Color(0xFFE94584),
-                    history = techniqueHistory
+                    history = precisionHistory
                 )
 
                 RingLegendWithMiniChart(
-                    title = "Precisión en las notas",
-                    progress = notesAccuracyProgress,
+                    title = "Consistencia",
+                    progress = consistency,
                     color = Color(0xFF9EF01A),
-                    history = notesAccuracyHistory
+                    history = consistencyHistory
                 )
 
                 RingLegendWithMiniChart(
-                    title = "Nivel de jugador",
-                    progress = playerLevelProgress,
+                    title = "Objetivo diario (${minutesToday.toInt()} / ${META_DIARIA_MIN.toInt()} min)",
+                    progress = dailyGoal,
                     color = Color(0xFF5AC8FA),
-                    history = playerLevelHistory
+                    history = emptyList()
                 )
             }
         }
@@ -173,7 +257,8 @@ fun RingsCard(
 fun TripleRingProgress(
     outerProgress: Float,
     middleProgress: Float,
-    innerProgress: Float
+    innerProgress: Float,
+    centerPct: Int = 0
 ) {
     val outerAnimated by animateFloatAsState(
         targetValue = outerProgress,
@@ -279,7 +364,7 @@ fun TripleRingProgress(
             )
 
             Text(
-                text = "76%",
+                text = "$centerPct%",
                 color = FretGold,
                 fontSize = 30.sp,
                 fontWeight = FontWeight.Bold
@@ -344,45 +429,48 @@ fun RingLegendWithMiniChart(
                 )
             }
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(45.dp)
-            ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val maxValue = history.maxOrNull() ?: 100f
-                    val minValue = history.minOrNull() ?: 0f
-                    val range = (maxValue - minValue).takeIf { it != 0f } ?: 1f
-                    val spacingX = size.width / (history.size - 1).coerceAtLeast(1)
+            // La gráfica solo se dibuja con historial real suficiente (≥2 sesiones).
+            if (history.size >= 2) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(45.dp)
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val maxValue = history.maxOrNull() ?: 100f
+                        val minValue = history.minOrNull() ?: 0f
+                        val range = (maxValue - minValue).takeIf { it != 0f } ?: 1f
+                        val spacingX = size.width / (history.size - 1).coerceAtLeast(1)
 
-                    val points = history.mapIndexed { index, value ->
-                        val x = spacingX * index
-                        val normalized = (value - minValue) / range
-                        val y = size.height - (normalized * size.height * animatedProgress.value)
-                        Offset(x, y)
-                    }
+                        val points = history.mapIndexed { index, value ->
+                            val x = spacingX * index
+                            val normalized = (value - minValue) / range
+                            val y = size.height - (normalized * size.height * animatedProgress.value)
+                            Offset(x, y)
+                        }
 
-                    val path = Path()
-                    points.forEachIndexed { index, point ->
-                        if (index == 0) path.moveTo(point.x, point.y)
-                        else path.lineTo(point.x, point.y)
-                    }
+                        val path = Path()
+                        points.forEachIndexed { index, point ->
+                            if (index == 0) path.moveTo(point.x, point.y)
+                            else path.lineTo(point.x, point.y)
+                        }
 
-                    drawPath(
-                        path = path,
-                        color = color,
-                        style = Stroke(
-                            width = 3.dp.toPx(),
-                            cap = StrokeCap.Round
-                        )
-                    )
-
-                    points.forEach { point ->
-                        drawCircle(
+                        drawPath(
+                            path = path,
                             color = color,
-                            radius = 3.8.dp.toPx(),
-                            center = point
+                            style = Stroke(
+                                width = 3.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
                         )
+
+                        points.forEach { point ->
+                            drawCircle(
+                                color = color,
+                                radius = 3.8.dp.toPx(),
+                                center = point
+                            )
+                        }
                     }
                 }
             }
@@ -391,7 +479,12 @@ fun RingLegendWithMiniChart(
 }
 
 @Composable
-fun StatsGrid() {
+fun StatsGrid(
+    sessions: Int,
+    minutesTotal: Float,
+    streak: Int,
+    exercisesCompleted: Int
+) {
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -401,13 +494,28 @@ fun StatsGrid() {
         ) {
             StatCard(
                 modifier = Modifier.weight(1f),
-                title = "Canciones completadas con éxito",
-                value = "12"
+                title = "Sesiones completadas",
+                value = "$sessions"
             )
             StatCard(
                 modifier = Modifier.weight(1f),
                 title = "Minutos de práctica",
-                value = "340"
+                value = "${minutesTotal.toInt()}"
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            StatCard(
+                modifier = Modifier.weight(1f),
+                title = "Racha de días",
+                value = "$streak"
+            )
+            StatCard(
+                modifier = Modifier.weight(1f),
+                title = "Ejercicios completados",
+                value = "$exercisesCompleted"
             )
         }
     }
@@ -445,7 +553,7 @@ fun StatCard(
 }
 
 @Composable
-fun AiSummaryCard() {
+fun AiSummaryCard(summary: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = FretSurface),
@@ -464,7 +572,7 @@ fun AiSummaryCard() {
             )
 
             Text(
-                text = "Wilfredo detecta que tu técnica va mejorando con estabilidad. Tu precisión en las notas muestra una tendencia positiva y tu nivel de jugador se perfila hacia un rendimiento intermedio cada vez más sólido.",
+                text = summary,
                 color = FretText,
                 fontSize = 14.sp,
                 lineHeight = 20.sp
