@@ -196,9 +196,31 @@ data class PracticaProfile(
     val errorAvg: Double
 )
 
+// Actualización de una habilidad tras una práctica (P1).
+data class HabilidadUpdateDto(
+    val habilidad: String,
+    val nombre: String,
+    val delta: Double = 0.0,
+    val nivel: Int = 0,
+    val progreso: Double = 0.0,
+    val confianza: Double = 0.0,
+    val subioNivel: Boolean = false
+)
+
+data class PasoCompletadoDto(
+    val id: String,
+    val nombre: String
+)
+
 data class PracticaResult(
     val metrics: PracticaMetrics,
-    val profile: PracticaProfile
+    val profile: PracticaProfile,
+    // Campos P1 (aditivos): pueden faltar si el backend es P0.
+    val aprobado: Boolean? = null,
+    val criterios: CriteriosDto? = null,
+    val habilidadesActualizadas: List<HabilidadUpdateDto> = emptyList(),
+    val subioNivel: Boolean = false,
+    val pasoCompletado: PasoCompletadoDto? = null
 )
 
 data class PracticaAnalyzeInfo(
@@ -234,6 +256,121 @@ data class ProgresoDto(
     val ejerciciosCompletados: Int = 0,
     val ultimaPractica: String? = null,
     val historial: List<SesionHistorialDto> = emptyList()
+)
+
+// ==========================================
+// P1 - HABILIDADES / CAMINO / ENTRENADOR
+// ==========================================
+
+data class HabilidadDto(
+    val id: String,
+    val nombre: String,
+    val nivel: Int = 0,
+    val progreso: Double = 0.0,
+    val confianza: Double = 0.0,
+    val intentos: Int = 0,
+    val ultimaPractica: String? = null,
+    val valor: Double = 0.0
+)
+
+data class HabilidadesResponse(
+    val usuario: String,
+    val habilidades: List<HabilidadDto> = emptyList(),
+    val debiles: List<String> = emptyList(),
+    val fuertes: List<String> = emptyList(),
+    val actualizado: String? = null
+)
+
+data class PasoCaminoDto(
+    val id: String,
+    val nombre: String,
+    val descripcion: String,
+    val habilidad: String,
+    val ejercicios: List<String> = emptyList(),
+    val estado: String,                 // bloqueado | disponible | en_curso | completado
+    val fechaCompletado: String? = null
+)
+
+data class CaminoResponse(
+    val usuario: String,
+    val pasoActual: String,
+    val pasos: List<PasoCaminoDto> = emptyList(),
+    val refuerzosPendientes: List<String> = emptyList(),
+    val completados: Int = 0,
+    val totalPasos: Int = 0
+)
+
+data class EjercicioDto(
+    val id: String,
+    val nombre: String,
+    val emoji: String = "🎸",
+    val descripcion: String = "",
+    val habilidad: String = "",
+    val secundarias: List<String> = emptyList(),
+    val paso: String? = null,
+    val dificultad: Int = 1,
+    val duracionMin: Int = 10,
+    val objetivo: String = "",
+    val criterios: CriteriosDto? = null
+)
+
+data class CriteriosDto(
+    val precisionMin: Double = 0.0,
+    val consistenciaMin: Double = 0.0,
+    val duracionMinSeg: Int = 0
+)
+
+// --- Entrenador (Home) ---
+
+data class RecomendacionDto(
+    val tipo: String,                   // practicar | repetir | subir_dificultad | bajar_dificultad | descanso
+    val habilidad: String? = null,
+    val ejercicioId: String? = null,
+    val dificultad: Int? = null,
+    val duracionMin: Int? = null,
+    val razon: String = ""
+)
+
+data class CelebracionDto(
+    val tipo: String,
+    val titulo: String,
+    val mensaje: String
+)
+
+data class ObjetivoDiaDto(
+    val metaMin: Int = 15,
+    val minutosHoy: Double = 0.0,
+    val restanteMin: Double = 0.0,
+    val cumplido: Boolean = false
+)
+
+data class HabilidadResumenDto(
+    val id: String,
+    val nombre: String,
+    val nivel: Int = 0,
+    val confianza: Double = 0.0,
+    val valor: Double = 0.0
+)
+
+data class ProximoLogroDto(
+    val tipo: String,
+    val titulo: String,
+    val detalle: String,
+    val paso: String? = null
+)
+
+data class EntrenadorResponse(
+    val usuario: String,
+    val recomendacion: RecomendacionDto,
+    val ejercicio: EjercicioDto? = null,
+    val celebracion: CelebracionDto? = null,
+    val consejo: String = "",
+    val objetivoDia: ObjetivoDiaDto = ObjetivoDiaDto(),
+    val racha: Int = 0,
+    val habilidadesDebiles: List<HabilidadResumenDto> = emptyList(),
+    val habilidadesFuertes: List<HabilidadResumenDto> = emptyList(),
+    val proximoLogro: ProximoLogroDto? = null,
+    val pasoActual: String? = null
 )
 
 // ==========================================

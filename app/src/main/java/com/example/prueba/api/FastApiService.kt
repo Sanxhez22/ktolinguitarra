@@ -87,4 +87,31 @@ interface FastApiService {
 
     @GET("/progreso/{userId}")
     suspend fun progreso(@Path("userId") userId: String): Response<ProgresoDto>
+
+    // ==========================================
+    // P1 - ENTRENADOR / HABILIDADES / CAMINO / EJERCICIOS
+    // ==========================================
+
+    @GET("/entrenador/{userId}")
+    suspend fun entrenador(
+        @Path("userId") userId: String,
+        @Query("tz_offset_min") tzOffsetMin: Int = 0
+    ): Response<EntrenadorResponse>
+
+    @GET("/habilidades/{userId}")
+    suspend fun habilidades(@Path("userId") userId: String): Response<HabilidadesResponse>
+
+    @GET("/camino/{userId}")
+    suspend fun camino(@Path("userId") userId: String): Response<CaminoResponse>
+
+    @GET("/ejercicios")
+    suspend fun ejercicios(@Query("habilidad") habilidad: String? = null): Response<EjerciciosResponse>
+
+    @GET("/ejercicios/{id}")
+    suspend fun ejercicio(@Path("id") id: String): Response<EjercicioDto>
 }
+
+data class EjerciciosResponse(
+    val ejercicios: List<EjercicioDto> = emptyList(),
+    val total: Int = 0
+)
