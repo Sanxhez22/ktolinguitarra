@@ -69,4 +69,6 @@ dependencies {
     implementation(libs.play.auth)
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
     implementation(libs.lifecycle.viewmodel.compose)
+    // Carga de imágenes (portadas de canciones en Song Detail)
+    implementation("io.coil-kt:coil-compose:2.7.0")
 }

@@ -78,7 +78,8 @@ interface FastApiService {
         @Query("user_id") userId: String,
         @Part file: MultipartBody.Part,
         @Query("duracion_seg") duracionSeg: Int = 0,
-        @Query("ejercicio") ejercicio: String = "practica_general"
+        @Query("ejercicio") ejercicio: String = "practica_general",
+        @Query("cancion_id") cancionId: Long? = null
     ): Response<PracticaResult>
 
     // ==========================================
@@ -109,6 +110,51 @@ interface FastApiService {
 
     @GET("/ejercicios/{id}")
     suspend fun ejercicio(@Path("id") id: String): Response<EjercicioDto>
+
+    // ==========================================
+    // CANCIONES / BIBLIOTECA (Song Detail)
+    // ==========================================
+
+    @GET("/canciones/buscar")
+    suspend fun buscarCanciones(
+        @Query("q") q: String,
+        @Query("size") size: Int = 10,
+        @Query("desde") desde: Int = 0
+    ): Response<BusquedaCancionesResponse>
+
+    @GET("/canciones/{songId}")
+    suspend fun cancionDetalle(@Path("songId") songId: Long): Response<CancionDetalleDto>
+
+    @GET("/canciones/{songId}/plan")
+    suspend fun cancionPlan(
+        @Path("songId") songId: Long,
+        @Query("user_id") userId: String
+    ): Response<PlanCancionDto>
+
+    @POST("/canciones/{songId}/practicar")
+    suspend fun cancionPracticar(
+        @Path("songId") songId: Long,
+        @Query("user_id") userId: String
+    ): Response<PlanCancionDto>
+
+    @GET("/biblioteca/{userId}")
+    suspend fun biblioteca(
+        @Path("userId") userId: String,
+        @Query("tipo") tipo: String? = null
+    ): Response<BibliotecaResponse>
+
+    @GET("/biblioteca/{userId}/{songId}")
+    suspend fun bibliotecaEstado(
+        @Path("userId") userId: String,
+        @Path("songId") songId: Long
+    ): Response<BibliotecaItemDto>
+
+    @POST("/biblioteca/{userId}/{songId}")
+    suspend fun bibliotecaActualizar(
+        @Path("userId") userId: String,
+        @Path("songId") songId: Long,
+        @Body cambios: BibliotecaUpdateRequest
+    ): Response<BibliotecaItemDto>
 }
 
 data class EjerciciosResponse(

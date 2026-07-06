@@ -409,56 +409,98 @@ data class UserProfileDto(
 )
 
 // ==========================================
-// SONGSTERR DOMAIN
+// CANCIONES (Song Detail) - DTOs propios de FretMind
+// Toda la integración con Songsterr/iTunes vive en el backend
+// (/canciones, /biblioteca); Android solo consume estos modelos.
 // ==========================================
 
-data class SongsterrTrack(
-    val instrumentId: Int,
-    val instrument: String,
-    val views: Int?,
-    val name: String?,
-    val tuning: List<Int>?,
-    val difficulty: Int?,
-    val hash: String?,
-    val isVocalTrack: Boolean? = null,
-    val isEmpty: Boolean? = null
-)
-
-data class SongsterrAuthor(
-    val personId: Long?,
-    val name: String?,
-    val profileName: String?
-)
-
-// Respuesta de /api/meta/{songId}: metadata rica de una canción.
-data class SongsterrMeta(
+data class CancionResumenDto(
     val songId: Long,
-    val artist: String,
-    val title: String,
-    val description: String? = null,
-    val author: SongsterrAuthor? = null,
-    val tags: List<String>? = null,
-    val views: Int? = null,
-    val favoritesCount: Int? = null,
-    val hasChords: Boolean = false,
-    val hasPlayer: Boolean = false,
-    val tracks: List<SongsterrTrack> = emptyList(),
-    val defaultTrack: Int = 0
+    val titulo: String,
+    val artista: String,
+    val dificultad: String? = null,      // Fácil | Intermedio | Avanzado
+    val tieneAcordes: Boolean = false,
+    val tienePlayer: Boolean = false,
+    val pistas: Int = 0
 )
 
-data class SongsterrSong(
+data class BusquedaCancionesResponse(
+    val canciones: List<CancionResumenDto> = emptyList(),
+    val cantidad: Int = 0,
+    val desde: Int = 0,
+    val size: Int = 10,
+    val hayMas: Boolean = false
+)
+
+data class PistaDto(
+    val instrumento: String,
+    val nombre: String? = null,
+    val afinacion: String? = null,
+    val dificultad: String? = null,
+    val esVoz: Boolean = false,
+    val vistas: Int? = null
+)
+
+data class CancionDetalleDto(
     val songId: Long,
-    val artistId: Int,
-    val artist: String,
-    val title: String,
-    val hasChords: Boolean,
-    val hasPlayer: Boolean,
-    val tracks: List<SongsterrTrack>,
-    val defaultTrack: Int,
-    val popularTrack: Int,
-    val isJunk: Boolean,
-    val popularTrackGuitar: Int?,
-    val popularTrackBass: Int?,
-    val popularTrackDrum: Int?,
-    val popularTrackVocals: Int?
+    val titulo: String,
+    val artista: String,
+    // Enriquecimiento iTunes (null si no hubo match confiable).
+    val portada: String? = null,
+    val genero: String? = null,
+    val duracionSeg: Int? = null,
+    val album: String? = null,
+    // Metadata Songsterr.
+    val afinacion: String? = null,
+    val dificultad: String? = null,
+    val tieneAcordes: Boolean = false,
+    val tienePlayer: Boolean = false,
+    val descripcion: String? = null,
+    val autor: String? = null,
+    val vistas: Int? = null,
+    val favoritos: Int? = null,
+    val tags: List<String> = emptyList(),
+    val pistas: List<PistaDto> = emptyList(),
+    val pistaDefault: Int = 0,
+    val videos: List<String> = emptyList(),
+    val enlaceTab: String = ""
+)
+
+data class BibliotecaItemDto(
+    val songId: Long,
+    val titulo: String = "",
+    val artista: String = "",
+    val portada: String? = null,
+    val guardada: Boolean = false,
+    val favorita: Boolean = false,
+    val practicas: Int = 0,
+    val fechaAgregada: String? = null,
+    val ultimaPractica: String? = null
+)
+
+data class BibliotecaResponse(
+    val usuario: String,
+    val items: List<BibliotecaItemDto> = emptyList(),
+    val total: Int = 0
+)
+
+data class BibliotecaUpdateRequest(
+    val guardada: Boolean? = null,
+    val favorita: Boolean? = null
+)
+
+data class CancionMiniDto(
+    val songId: Long,
+    val titulo: String,
+    val artista: String,
+    val portada: String? = null
+)
+
+// Respuesta de GET /canciones/{id}/plan y POST /canciones/{id}/practicar.
+data class PlanCancionDto(
+    val cancion: CancionMiniDto,
+    val ejercicio: EjercicioDto,
+    val objetivos: List<String> = emptyList(),
+    val consejo: String = "",
+    val duracionSugeridaMin: Int = 15
 )
