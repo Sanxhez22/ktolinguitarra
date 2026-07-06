@@ -7,5 +7,6 @@ data class UserSession(
     val foto: String? = null,
     val nivel: String = "Principiante",
     val token: String,
-    val onboardingCompletado: Boolean = false
+    val onboardingCompletado: Boolean = false,
+    val afinacionOmitida: Boolean = false
 )

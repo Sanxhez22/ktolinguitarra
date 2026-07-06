@@ -69,6 +69,9 @@ fun HomeScreen(
                     racha = data.entrenador.racha,
                     onLogout = { scope.launch { AuthRepository.signOut(); onLogout() } }
                 )
+                if (data.afinacionPendiente) {
+                    AvisoAfinacionBanner(onAfinar = { onNavigate("tuner") })
+                }
                 data.entrenador.celebracion?.let { CelebracionBanner(it.titulo, it.mensaje) }
                 PracticaDeHoyCard(data.entrenador, onNavigate = onNavigate)
                 ObjetivoDiaCard(data.entrenador)
@@ -119,6 +122,41 @@ private fun TrainerHeader(userName: String, racha: Int, onLogout: () -> Unit) {
             }
         }
         TextButton(onClick = onLogout) { Text("Salir", color = FretMuted, fontSize = 12.sp) }
+    }
+}
+
+/**
+ * Aviso mientras el usuario no haya afinado (omitió el afinador del
+ * onboarding). Desaparece solo cuando el backend registra una afinación real.
+ */
+@Composable
+private fun AvisoAfinacionBanner(onAfinar: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF3A2E10)),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "🎸 Tu guitarra aún no ha sido afinada",
+                color = FretGold,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp
+            )
+            Text(
+                text = "Para obtener mejores resultados te recomendamos afinarla antes de practicar.",
+                color = FretText,
+                fontSize = 13.sp,
+                lineHeight = 18.sp
+            )
+            Button(
+                onClick = onAfinar,
+                colors = ButtonDefaults.buttonColors(containerColor = FretGold, contentColor = FretBlack),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text("Afinar ahora", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            }
+        }
     }
 }
 

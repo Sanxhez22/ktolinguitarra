@@ -64,6 +64,21 @@ class OnboardingViewModel : ViewModel() {
         }
     }
 
+    /**
+     * "Afinar después": marca que el usuario omitió la afinación del
+     * onboarding y continúa el flujo. Nunca bloquea: si la red falla,
+     * el usuario avanza igual (solo se pierde el aviso en Home).
+     */
+    fun omitirAfinacion(onDone: () -> Unit) {
+        viewModelScope.launch {
+            val session = authRepository.restoreSession().getOrNull()
+            if (session != null) {
+                authRepository.saveOnboarding(session.id, afinacionOmitida = true)
+            }
+            onDone()
+        }
+    }
+
     fun resetSaveError() {
         if (_saveState.value is UiState.Error) _saveState.value = UiState.Idle
     }

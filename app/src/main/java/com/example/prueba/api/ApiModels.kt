@@ -384,7 +384,8 @@ data class GoogleLoginRequest(val idToken: String)
 data class OnboardingRequest(
     val experiencia: String? = null,
     val objetivo: String? = null,
-    val completado: Boolean? = null
+    val completado: Boolean? = null,
+    val afinacionOmitida: Boolean? = null
 )
 
 data class EstadisticasDto(
@@ -403,6 +404,7 @@ data class UserProfileDto(
     val experiencia: String? = null,
     val objetivo: String? = null,
     val onboardingCompletado: Boolean = false,
+    val afinacionOmitida: Boolean = false,
     val fechaRegistro: String? = null,
     val ultimaSesion: String? = null,
     val estadisticas: EstadisticasDto? = null

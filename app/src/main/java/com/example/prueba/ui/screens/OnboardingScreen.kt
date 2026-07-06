@@ -18,6 +18,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -111,7 +112,14 @@ fun OnboardingScreen(
         }
 
         PasoOnboarding.AFINADOR -> {
-            OnboardingTunerStep(onAfinada = { paso = PasoOnboarding.PRACTICA })
+            OnboardingTunerStep(
+                onAfinada = { paso = PasoOnboarding.PRACTICA },
+                onOmitir = {
+                    onboardingViewModel.omitirAfinacion {
+                        paso = PasoOnboarding.PRACTICA
+                    }
+                }
+            )
         }
 
         else -> {
@@ -350,7 +358,10 @@ private fun PrepararStep(onContinuar: () -> Unit) {
  * objetivo real).
  */
 @Composable
-private fun OnboardingTunerStep(onAfinada: () -> Unit) {
+private fun OnboardingTunerStep(
+    onAfinada: () -> Unit,
+    onOmitir: () -> Unit = {}
+) {
     val context = LocalContext.current
 
     var hasMicPermission by remember {
@@ -575,6 +586,28 @@ private fun OnboardingTunerStep(onAfinada: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text("Afinadas: ${afinadas.size} / ${CUERDAS.size}", fontWeight = FontWeight.Bold)
+            }
+        }
+
+        // Salida secundaria y discreta: se puede omitir la afinación, pero la
+        // recomendación clara sigue siendo afinar primero.
+        if (!todasAfinadas) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Recomendamos afinar antes de tu primera práctica.",
+                    color = FretMuted,
+                    fontSize = 12.sp
+                )
+                TextButton(onClick = onOmitir) {
+                    Text(
+                        text = "Afinar después",
+                        color = FretMuted,
+                        fontSize = 13.sp
+                    )
+                }
             }
         }
     }

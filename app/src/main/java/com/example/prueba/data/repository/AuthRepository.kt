@@ -56,11 +56,17 @@ object AuthRepository {
         userId: String,
         experiencia: String? = null,
         objetivo: String? = null,
-        completado: Boolean? = null
+        completado: Boolean? = null,
+        afinacionOmitida: Boolean? = null
     ): Result<UserSession> = runCatching {
         val response = api.saveOnboarding(
             userId,
-            OnboardingRequest(experiencia = experiencia, objetivo = objetivo, completado = completado)
+            OnboardingRequest(
+                experiencia = experiencia,
+                objetivo = objetivo,
+                completado = completado,
+                afinacionOmitida = afinacionOmitida
+            )
         )
         val body = response.body()
         if (response.isSuccessful && body != null) {
@@ -73,6 +79,32 @@ object AuthRepository {
         }
     }
 
+    /**
+     * Refresca la sesión local con el perfil del backend (fuente de verdad).
+     * Mantiene sincronizados flags que el servidor puede cambiar por su
+     * cuenta (p. ej. afinacion_omitida se apaga al practicar afinación).
+     */
+    suspend fun refreshSession(): UserSession? {
+        val actual = store.read() ?: return null
+        getProfile(actual.id).onSuccess { perfil ->
+            val session = perfil.toSession(actual.token)
+            store.save(session)
+            return session
+        }
+        return actual
+    }
+
+    /**
+     * Primera afinación real detectada (una cuerda en tono en el afinador):
+     * apaga el aviso de "guitarra sin afinar" si estaba activo. No-op en
+     * cualquier otro caso; nunca falla hacia la UI.
+     */
+    suspend fun marcarAfinacionRealizada() {
+        val session = store.read() ?: return
+        if (!session.afinacionOmitida) return
+        saveOnboarding(session.id, afinacionOmitida = false)
+    }
+
     suspend fun signOut(): Result<Unit> = runCatching { store.clear() }
 }
 
@@ -83,5 +115,6 @@ private fun UserProfileDto.toSession(token: String) = UserSession(
     foto = foto,
     nivel = nivel,
     token = token,
-    onboardingCompletado = onboardingCompletado
+    onboardingCompletado = onboardingCompletado,
+    afinacionOmitida = afinacionOmitida
 )

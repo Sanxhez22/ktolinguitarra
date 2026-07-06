@@ -24,6 +24,7 @@ class SessionDataStore(private val context: Context) {
         val NIVEL = stringPreferencesKey("nivel")
         val TOKEN = stringPreferencesKey("token")
         val ONBOARDING = booleanPreferencesKey("onboarding_completado")
+        val AFINACION_OMITIDA = booleanPreferencesKey("afinacion_omitida")
     }
 
     suspend fun save(session: UserSession) {
@@ -35,6 +36,7 @@ class SessionDataStore(private val context: Context) {
             p[Keys.NIVEL] = session.nivel
             p[Keys.TOKEN] = session.token
             p[Keys.ONBOARDING] = session.onboardingCompletado
+            p[Keys.AFINACION_OMITIDA] = session.afinacionOmitida
         }
     }
 
@@ -48,7 +50,8 @@ class SessionDataStore(private val context: Context) {
             foto = p[Keys.FOTO],
             nivel = p[Keys.NIVEL] ?: "principiante",
             token = p[Keys.TOKEN] ?: "",
-            onboardingCompletado = p[Keys.ONBOARDING] ?: false
+            onboardingCompletado = p[Keys.ONBOARDING] ?: false,
+            afinacionOmitida = p[Keys.AFINACION_OMITIDA] ?: false
         )
     }
 

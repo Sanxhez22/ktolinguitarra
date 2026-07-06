@@ -84,6 +84,16 @@ fun TunerScreen() {
         if (granted) activo = true
     }
 
+    // Primera nota en tono detectada: registra la "afinación real" en el
+    // backend (apaga el aviso de guitarra sin afinar si el usuario omitió
+    // el afinador del onboarding). No altera el comportamiento del afinador.
+    var notaEnTono by remember { mutableStateOf(false) }
+    LaunchedEffect(notaEnTono) {
+        if (notaEnTono) {
+            com.example.prueba.data.repository.AuthRepository.marcarAfinacionRealizada()
+        }
+    }
+
     // Motor de captura + detección de tono. Actualiza el estado de la UI por cada lectura.
     val engine = remember {
         TunerEngine(onPitch = { freq ->
@@ -94,6 +104,7 @@ fun TunerScreen() {
                 cents = c
                 frecuencia = freq
                 cuerdaDetectada = nearestString(freq)
+                if (abs(c) < 5f) notaEnTono = true
             }
         })
     }

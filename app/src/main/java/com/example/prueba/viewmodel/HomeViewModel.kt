@@ -17,7 +17,10 @@ import kotlinx.coroutines.launch
  */
 data class HomeData(
     val userName: String = "Guitarrista",
-    val entrenador: EntrenadorResponse
+    val entrenador: EntrenadorResponse,
+    // True mientras el usuario omitió la afinación del onboarding y aún no
+    // realiza una afinación real (el backend apaga el flag).
+    val afinacionPendiente: Boolean = false
 )
 
 class HomeViewModel : ViewModel() {
@@ -31,7 +34,9 @@ class HomeViewModel : ViewModel() {
         viewModelScope.launch {
             _homeState.value = UiState.Loading
 
-            val session = authRepository.restoreSession().getOrNull()
+            // refreshSession sincroniza flags que el backend puede cambiar
+            // (p. ej. afinacion_omitida se apaga tras una afinación real).
+            val session = authRepository.refreshSession()
             if (session == null) {
                 _homeState.value = UiState.Error("Inicia sesión para ver tu entrenador.")
                 return@launch
@@ -40,7 +45,11 @@ class HomeViewModel : ViewModel() {
             trainerRepository.getEntrenador(session.id)
                 .onSuccess { entrenador ->
                     _homeState.value = UiState.Success(
-                        HomeData(userName = session.nombre, entrenador = entrenador)
+                        HomeData(
+                            userName = session.nombre,
+                            entrenador = entrenador,
+                            afinacionPendiente = session.afinacionOmitida
+                        )
                     )
                 }
                 .onFailure { e ->
