@@ -29,12 +29,13 @@ class PracticeRepository {
         userId: String,
         file: File,
         duracionSeg: Int = 0,
-        ejercicio: String = "practica_general"
+        ejercicio: String = "practica_general",
+        cancionId: Long? = null
     ): Result<PracticaResult> = runCatching {
         val mediaType = "audio/wav".toMediaTypeOrNull()
         val requestBody = file.readBytes().toRequestBody(mediaType)
         val part = MultipartBody.Part.createFormData("file", file.name, requestBody)
-        val response = api.practica(userId, part, duracionSeg, ejercicio)
+        val response = api.practica(userId, part, duracionSeg, ejercicio, cancionId)
         val body = response.body()
         if (response.isSuccessful && body != null) {
             body

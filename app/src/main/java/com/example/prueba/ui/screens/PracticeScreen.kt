@@ -8,8 +8,10 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
@@ -52,7 +54,8 @@ enum class FasePractica { SELECCION, MODO, GUIADO, CRONOMETRO, ANALISIS, RESULTA
 fun PracticeScreen(
     practiceViewModel: PracticeViewModel = viewModel(),
     onSessionComplete: (() -> Unit)? = null,
-    ejercicioPreseleccionado: String? = null
+    ejercicioPreseleccionado: String? = null,
+    cancionId: Long? = null
 ) {
     val context = LocalContext.current
 
@@ -64,15 +67,37 @@ fun PracticeScreen(
     val practiceState by practiceViewModel.practiceState.collectAsState()
     val feedbackState by practiceViewModel.feedbackState.collectAsState()
     val ejercicioInfo by practiceViewModel.ejercicioInfo.collectAsState()
+    val songPlan by practiceViewModel.songPlan.collectAsState()
 
-    // Preselección: si el entrenador recomienda un ejercicio, saltamos directo
-    // a elegir modo con ese ejercicio ya cargado.
+    // Práctica de una canción (Song Detail): asocia la sesión y trae el plan.
+    LaunchedEffect(cancionId) {
+        cancionId?.let { practiceViewModel.loadSongPlan(it) }
+    }
+
+    // Preselección: si el entrenador o una canción recomiendan un ejercicio,
+    // saltamos directo a elegir modo. Ejercicios que no están en el catálogo
+    // local (p. ej. primera_cancion, lectura) se crean provisionales y su
+    // metadata llega del backend (ejercicioInfo).
     LaunchedEffect(ejercicioPreseleccionado) {
-        val pre = ejercicioPreseleccionado?.let { id -> EJERCICIOS.find { it.id == id } }
-        if (pre != null && ejercicioSel == null) {
-            ejercicioSel = pre
-            practiceViewModel.loadEjercicio(pre.id)
-            fase = FasePractica.MODO
+        val id = ejercicioPreseleccionado ?: return@LaunchedEffect
+        if (ejercicioSel != null) return@LaunchedEffect
+        val pre = EJERCICIOS.find { it.id == id } ?: Ejercicio(
+            id = id,
+            label = id.replace('_', ' ').replaceFirstChar { it.uppercase() },
+            emoji = "🎵",
+            desc = ""
+        )
+        ejercicioSel = pre
+        practiceViewModel.loadEjercicio(id)
+        fase = FasePractica.MODO
+    }
+
+    // Cuando llega la metadata del backend, mejora la etiqueta provisional.
+    LaunchedEffect(ejercicioInfo) {
+        val info = ejercicioInfo ?: return@LaunchedEffect
+        val sel = ejercicioSel
+        if (sel != null && sel.id == info.id && sel.desc.isEmpty()) {
+            ejercicioSel = Ejercicio(info.id, info.nombre, info.emoji, info.descripcion)
         }
     }
 
@@ -124,6 +149,8 @@ fun PracticeScreen(
                 EjercicioModo(
                     ejercicio = ejercicioSel!!,
                     info = ejercicioInfo?.takeIf { it.id == ejercicioSel!!.id },
+                    songPlan = songPlan,
+                    tieneGuiada = EJERCICIOS_POR_TIPO.containsKey(ejercicioSel!!.id),
                     onLibre = {
                         activo = true
                         fase = FasePractica.CRONOMETRO
@@ -286,12 +313,16 @@ fun EjercicioSelection(
 fun EjercicioModo(
     ejercicio: Ejercicio,
     info: com.example.prueba.api.EjercicioDto? = null,
+    songPlan: com.example.prueba.api.PlanCancionDto? = null,
+    tieneGuiada: Boolean = true,
     onLibre: () -> Unit,
     onGuiado: () -> Unit,
     onBack: () -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -308,6 +339,35 @@ fun EjercicioModo(
             }
         }
 
+        // Practicando una canción concreta: plan de Wilfredo (Song Detail).
+        if (songPlan != null) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = FretGold.copy(alpha = 0.1f)),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "🎵 ${songPlan.cancion.titulo} — ${songPlan.cancion.artista}",
+                        color = FretGold,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                    songPlan.objetivos.forEachIndexed { i, obj ->
+                        Text(
+                            text = "${i + 1}. $obj",
+                            color = FretText,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+            }
+        }
+
         // Objetivo y criterios de aprobación (práctica inteligente P1).
         if (info != null) {
             ObjetivoEjercicioCard(info)
@@ -319,38 +379,40 @@ fun EjercicioModo(
             fontSize = 12.sp
         )
 
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onGuiado() },
-            colors = CardDefaults.cardColors(containerColor = FretSurface),
-            shape = RoundedCornerShape(20.dp)
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+        if (tieneGuiada) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onGuiado() },
+                colors = CardDefaults.cardColors(containerColor = FretSurface),
+                shape = RoundedCornerShape(20.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .background(FretGold.copy(alpha = 0.2f), RoundedCornerShape(14.dp)),
-                    contentAlignment = Alignment.Center
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("🎯", fontSize = 20.sp)
-                }
-                Spacer(modifier = Modifier.width(14.dp))
-                Column {
-                    Text(
-                        text = "Práctica guiada",
-                        color = FretText,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                    Text(
-                        text = "Ejercicios paso a paso.",
-                        color = FretMuted,
-                        fontSize = 13.sp
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(FretGold.copy(alpha = 0.2f), RoundedCornerShape(14.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("🎯", fontSize = 20.sp)
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column {
+                        Text(
+                            text = "Práctica guiada",
+                            color = FretText,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            text = "Ejercicios paso a paso.",
+                            color = FretMuted,
+                            fontSize = 13.sp
+                        )
+                    }
                 }
             }
         }

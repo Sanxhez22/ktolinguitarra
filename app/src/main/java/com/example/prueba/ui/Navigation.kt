@@ -213,14 +213,21 @@ fun AppNav() {
                     SearchScreen(onSongClick = { id -> navController.navigate(songDetailRoute(id)) })
                 }
                 composable(
-                    route = "practice?ej={ej}",
-                    arguments = listOf(navArgument("ej") {
-                        type = NavType.StringType
-                        defaultValue = ""
-                    })
+                    route = "practice?ej={ej}&song={song}",
+                    arguments = listOf(
+                        navArgument("ej") {
+                            type = NavType.StringType
+                            defaultValue = ""
+                        },
+                        navArgument("song") {
+                            type = NavType.StringType
+                            defaultValue = ""
+                        }
+                    )
                 ) { entry ->
                     val ej = entry.arguments?.getString("ej")?.takeIf { it.isNotBlank() }
-                    PracticeScreen(ejercicioPreseleccionado = ej)
+                    val song = entry.arguments?.getString("song")?.toLongOrNull()
+                    PracticeScreen(ejercicioPreseleccionado = ej, cancionId = song)
                 }
                 composable(Dest.Tuner.route) { TunerScreen() }
                 composable(Dest.Progress.route) {
@@ -235,7 +242,13 @@ fun AppNav() {
                     arguments = listOf(navArgument("songId") { type = NavType.LongType })
                 ) { backStackEntry ->
                     val songId = backStackEntry.arguments?.getLong("songId") ?: 0L
-                    SongDetailScreen(songId = songId, onBack = { navController.popBackStack() })
+                    SongDetailScreen(
+                        songId = songId,
+                        onBack = { navController.popBackStack() },
+                        onPracticar = { ejercicioId, cancion ->
+                            navController.navigate("practice?ej=$ejercicioId&song=$cancion")
+                        }
+                    )
                 }
             }
         }

@@ -3,12 +3,14 @@ package com.example.prueba.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.prueba.api.EjercicioDto
+import com.example.prueba.api.PlanCancionDto
 import com.example.prueba.api.PracticaAnalyzeInfo
 import com.example.prueba.api.PracticaResult
 import com.example.prueba.api.WilfredoAnalyzeInfo
 import com.example.prueba.data.repository.AuthRepository
 import com.example.prueba.data.repository.ChatRepository
 import com.example.prueba.data.repository.PracticeRepository
+import com.example.prueba.data.repository.SongRepository
 import com.example.prueba.data.repository.TrainerRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,10 +23,18 @@ class PracticeViewModel : ViewModel() {
     private val chatRepository = ChatRepository()
     private val authRepository = AuthRepository
     private val trainerRepository = TrainerRepository()
+    private val songRepository = SongRepository()
 
     // Metadata pedagógica del ejercicio seleccionado (objetivo, criterios).
     private val _ejercicioInfo = MutableStateFlow<EjercicioDto?>(null)
     val ejercicioInfo: StateFlow<EjercicioDto?> = _ejercicioInfo.asStateFlow()
+
+    // Plan de Wilfredo cuando se practica una canción concreta (Song Detail).
+    private val _songPlan = MutableStateFlow<PlanCancionDto?>(null)
+    val songPlan: StateFlow<PlanCancionDto?> = _songPlan.asStateFlow()
+
+    // Canción asociada a la sesión (se envía a POST /practica).
+    private var cancionId: Long? = null
 
     private val _audioState = MutableStateFlow<UiState<PracticaAnalyzeInfo>>(UiState.Idle)
     val audioState: StateFlow<UiState<PracticaAnalyzeInfo>> = _audioState.asStateFlow()
@@ -47,6 +57,18 @@ class PracticeViewModel : ViewModel() {
             trainerRepository.getEjercicio(id)
                 .onSuccess { _ejercicioInfo.value = it }
                 .onFailure { _ejercicioInfo.value = null }
+        }
+    }
+
+    /** Asocia la sesión a una canción y carga el plan de Wilfredo para ella. */
+    fun loadSongPlan(songId: Long) {
+        cancionId = songId
+        viewModelScope.launch {
+            if (_songPlan.value?.cancion?.songId == songId) return@launch
+            val session = authRepository.restoreSession().getOrNull() ?: return@launch
+            songRepository.plan(songId, session.id)
+                .onSuccess { _songPlan.value = it }
+                .onFailure { _songPlan.value = null }
         }
     }
 
@@ -95,7 +117,7 @@ class PracticeViewModel : ViewModel() {
                 return@launch
             }
 
-            practiceRepository.submitPractice(session.id, file, lastDuracionSeg, lastEjercicio)
+            practiceRepository.submitPractice(session.id, file, lastDuracionSeg, lastEjercicio, cancionId)
                 .onSuccess { result ->
                     _practiceState.value = UiState.Success(result)
                     file.delete()
