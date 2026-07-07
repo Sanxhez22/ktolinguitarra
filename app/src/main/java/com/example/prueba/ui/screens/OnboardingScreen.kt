@@ -140,7 +140,7 @@ fun OnboardingScreen(
 
                     PasoOnboarding.EXPERIENCIA -> PreguntaStep(
                         titulo = "¿Cuál es tu experiencia con la guitarra?",
-                        subtitulo = "Wilfredo ajustará los ejercicios a tu nivel.",
+                        subtitulo = "RIFF ajustará los ejercicios a tu nivel.",
                         opciones = OPCIONES_EXPERIENCIA,
                         seleccion = experiencia,
                         onSelect = { experiencia = it },
@@ -223,7 +223,7 @@ private fun BienvenidaStep(onContinuar: () -> Unit) {
             textAlign = TextAlign.Center
         )
         Text(
-            text = "Soy Wilfredo, tu instructor personal de guitarra. En unos pasos dejamos todo listo para tu primera práctica.",
+            text = "Soy RIFF, tu instructor personal de guitarra. En unos pasos dejamos todo listo para tu primera práctica.",
             color = FretMuted,
             fontSize = 15.sp,
             lineHeight = 22.sp,

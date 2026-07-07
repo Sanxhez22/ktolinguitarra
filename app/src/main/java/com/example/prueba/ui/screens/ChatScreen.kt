@@ -82,12 +82,12 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
                     .background(FretGold, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Text("W", color = FretBlack, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text("R", color = FretBlack, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }
             Spacer(Modifier.width(14.dp))
             Column {
                 Text(
-                    text = "Wilfredo",
+                    text = "RIFF",
                     color = FretText,
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp
@@ -119,7 +119,7 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
                 }
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    text = "¡Hola! Soy Wilfredo",
+                    text = "¡Hola! Soy RIFF",
                     color = FretText,
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp
@@ -169,7 +169,7 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
                                     .background(FretGold, CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("W", color = FretBlack, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Text("R", color = FretBlack, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             }
                             Spacer(Modifier.width(8.dp))
                             Card(
@@ -200,7 +200,7 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
                 value = input,
                 onValueChange = { input = it },
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("Pregúntale algo a Wilfredo...", color = FretMuted) },
+                placeholder = { Text("Pregúntale algo a RIFF...", color = FretMuted) },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = FretText,
                     unfocusedTextColor = FretText,
@@ -247,7 +247,7 @@ fun MessageBubble(mensaje: Mensaje) {
                     .background(FretGold, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Text("W", color = FretBlack, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Text("R", color = FretBlack, fontWeight = FontWeight.Bold, fontSize = 12.sp)
             }
             Spacer(Modifier.width(8.dp))
         }

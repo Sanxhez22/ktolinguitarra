@@ -47,4 +47,18 @@ class TrainerRepository {
         if (response.isSuccessful && body != null) body
         else throw Exception("No se pudo cargar el ejercicio (${response.code()})")
     }
+
+    suspend fun getHitos(userId: String): Result<com.example.prueba.api.HitosResponse> = runCatching {
+        val response = api.hitos(userId)
+        val body = response.body()
+        if (response.isSuccessful && body != null) body
+        else throw Exception("No se pudieron cargar tus hitos (${response.code()})")
+    }
+
+    suspend fun getPlanDiario(userId: String): Result<com.example.prueba.api.PlanDiarioDto> = runCatching {
+        val response = api.planDiario(userId, tzOffsetMin())
+        val body = response.body()
+        if (response.isSuccessful && body != null) body
+        else throw Exception("No se pudo cargar tu plan (${response.code()})")
+    }
 }

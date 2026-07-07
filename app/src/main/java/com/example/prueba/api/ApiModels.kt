@@ -401,6 +401,45 @@ data class EntrenadorResponse(
 )
 
 // ==========================================
+// MOTOR COGNITIVO (RIFF)
+// ==========================================
+
+// Hito detectado por Progress Intelligence (logro/evolución/estancamiento/recaída).
+data class HitoDto(
+    val clave: String,
+    val tipo: String,
+    val titulo: String,
+    val detalle: String = "",
+    val fecha: String? = null
+)
+
+data class HitosResponse(
+    val usuario: String,
+    val hitos: List<HitoDto> = emptyList()
+)
+
+data class PlanItemDto(
+    val orden: Int,
+    val tipo: String,                 // ejercicio | cancion | descanso
+    val ejercicioId: String? = null,
+    val titulo: String = "",
+    val emoji: String = "🎸",
+    val cancionId: Long? = null,
+    val duracionMin: Int = 0,
+    val xpPotencial: Int = 0,
+    val razon: String = "",
+    val completado: Boolean = false
+)
+
+data class PlanDiarioDto(
+    val fecha: String = "",
+    val items: List<PlanItemDto> = emptyList(),
+    val duracionTotalMin: Int = 0,
+    val xpPotencial: Int = 0,
+    val metaMin: Int = 15
+)
+
+// ==========================================
 // AUTH DOMAIN
 // ==========================================
 

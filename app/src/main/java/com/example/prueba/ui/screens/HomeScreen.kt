@@ -74,6 +74,7 @@ fun HomeScreen(
                 }
                 data.entrenador.celebracion?.let { CelebracionBanner(it.titulo, it.mensaje) }
                 PracticaDeHoyCard(data.entrenador, onNavigate = onNavigate)
+                data.plan?.let { PlanDelDiaCard(it, onNavigate) }
                 ObjetivoDiaCard(data.entrenador)
                 HabilidadesResumenCard(
                     debiles = data.entrenador.habilidadesDebiles,
@@ -110,7 +111,7 @@ private fun TrainerHeader(userName: String, racha: Int, onLogout: () -> Unit) {
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Soy Wilfredo, tu entrenador. Esto es lo que toca hoy.",
+                text = "Soy RIFF, tu entrenador. Esto es lo que toca hoy.",
                 color = FretMuted,
                 fontSize = 14.sp
             )
@@ -243,6 +244,77 @@ private fun PracticaDeHoyCard(entrenador: EntrenadorResponse, onNavigate: (Strin
     }
 }
 
+/** Plan del día del Motor Cognitivo: rutina ejecutable con XP potencial. */
+@Composable
+private fun PlanDelDiaCard(
+    plan: com.example.prueba.api.PlanDiarioDto,
+    onNavigate: (String) -> Unit
+) {
+    if (plan.items.isEmpty()) return
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = FretSurface),
+        shape = RoundedCornerShape(24.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("📋 Plan de hoy", color = FretGold, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text(
+                    text = "${plan.duracionTotalMin} min · +${plan.xpPotencial} XP",
+                    color = FretMuted,
+                    fontSize = 13.sp
+                )
+            }
+            plan.items.forEach { item ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF101722)),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(item.emoji, fontSize = 20.sp)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "${item.orden}. ${item.titulo}",
+                                color = FretText,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                            if (item.duracionMin > 0) {
+                                Text(
+                                    text = "${item.duracionMin} min",
+                                    color = FretMuted,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                        if (item.tipo != "descanso" && item.ejercicioId != null) {
+                            TextButton(onClick = {
+                                val ruta = if (item.cancionId != null)
+                                    "practice?ej=${item.ejercicioId}&song=${item.cancionId}"
+                                else "practice?ej=${item.ejercicioId}"
+                                onNavigate(ruta)
+                            }) {
+                                Text("Ir →", color = FretGold, fontSize = 13.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun ObjetivoDiaCard(entrenador: EntrenadorResponse) {
     val o = entrenador.objetivoDia
@@ -352,7 +424,7 @@ private fun ConsejoWilfredoCard(consejo: String) {
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
     ) {
         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Consejo de Wilfredo", color = FretGold, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text("Consejo de RIFF", color = FretGold, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             Text(
                 text = consejo.ifBlank { "Practica un poco cada día: la constancia vale más que las sesiones largas. 🎸" },
                 color = FretText,

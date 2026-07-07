@@ -119,6 +119,22 @@ interface FastApiService {
     suspend fun ejercicio(@Path("id") id: String): Response<EjercicioDto>
 
     // ==========================================
+    // MOTOR COGNITIVO (RIFF)
+    // ==========================================
+
+    @GET("/perfil/{userId}/hitos")
+    suspend fun hitos(
+        @Path("userId") userId: String,
+        @Query("limite") limite: Int = 10
+    ): Response<HitosResponse>
+
+    @GET("/plan/{userId}/diario")
+    suspend fun planDiario(
+        @Path("userId") userId: String,
+        @Query("tz_offset_min") tzOffsetMin: Int = 0
+    ): Response<PlanDiarioDto>
+
+    // ==========================================
     // CANCIONES / BIBLIOTECA (Song Detail)
     // ==========================================
 

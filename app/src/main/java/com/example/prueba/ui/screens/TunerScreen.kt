@@ -138,7 +138,7 @@ fun TunerScreen() {
             fontSize = 28.sp
         )
         Text(
-            text = "Afinación inteligente con Wilfredo 🎸",
+            text = "Afinación inteligente con RIFF 🎸",
             color = FretMuted,
             fontSize = 14.sp
         )

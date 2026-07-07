@@ -20,7 +20,9 @@ data class HomeData(
     val entrenador: EntrenadorResponse,
     // True mientras el usuario omitió la afinación del onboarding y aún no
     // realiza una afinación real (el backend apaga el flag).
-    val afinacionPendiente: Boolean = false
+    val afinacionPendiente: Boolean = false,
+    // Plan del día del Motor Cognitivo (MC5); null mientras carga o si falla.
+    val plan: com.example.prueba.api.PlanDiarioDto? = null
 )
 
 class HomeViewModel : ViewModel() {
@@ -51,6 +53,13 @@ class HomeViewModel : ViewModel() {
                             afinacionPendiente = session.afinacionOmitida
                         )
                     )
+                    // Plan del día (best-effort: la Home funciona sin él).
+                    trainerRepository.getPlanDiario(session.id).onSuccess { plan ->
+                        val actual = (_homeState.value as? UiState.Success)?.data
+                        if (actual != null) {
+                            _homeState.value = UiState.Success(actual.copy(plan = plan))
+                        }
+                    }
                 }
                 .onFailure { e ->
                     _homeState.value = UiState.Error(e.message ?: "No se pudo cargar tu entrenador.")

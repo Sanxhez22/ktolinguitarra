@@ -112,6 +112,11 @@ fun ProgressScreen(
 
         // Sección de habilidades (P1) + acceso al camino de aprendizaje.
         (skillsState as? UiState.Success)?.let { SkillsSection(it.data) }
+
+        // Hitos del Motor Cognitivo (RIFF).
+        val hitos by skillsViewModel.hitosState.collectAsState()
+        if (hitos.isNotEmpty()) HitosSection(hitos)
+
         VerCaminoCard(onVerCamino)
 
         Spacer(modifier = Modifier.height(90.dp))
@@ -187,6 +192,46 @@ private fun SkillBar(
                             RoundedCornerShape(50)
                         )
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HitosSection(hitos: List<com.example.prueba.api.HitoDto>) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = FretSurface),
+        shape = RoundedCornerShape(24.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("🏅 Tus hitos", color = FretGold, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            hitos.take(5).forEach { h ->
+                val emoji = when (h.tipo) {
+                    "logro" -> "🏆"
+                    "evolucion" -> "📈"
+                    "estancamiento" -> "🔄"
+                    "recaida" -> "🌱"
+                    else -> "⭐"
+                }
+                Column {
+                    Text(
+                        text = "$emoji ${h.titulo}",
+                        color = FretText,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
+                    Text(
+                        text = h.detalle,
+                        color = FretMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+                }
             }
         }
     }
@@ -474,7 +519,7 @@ fun TripleRingProgress(
             )
 
             Text(
-                text = "por Wilfredo",
+                text = "por RIFF",
                 color = FretMuted,
                 fontSize = 13.sp
             )
@@ -681,7 +726,7 @@ fun AiSummaryCard(summary: String) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = "Resumen de Wilfredo",
+                text = "Resumen de RIFF",
                 color = FretGold,
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp

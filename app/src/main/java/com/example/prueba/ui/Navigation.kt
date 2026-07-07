@@ -37,7 +37,7 @@ sealed class Dest(val route: String, val label: String, val icon: ImageVector) {
     object Practice : Dest("practice", "Práctica", Icons.Filled.GraphicEq)
     object Tuner : Dest("tuner", "Afinador", Icons.Filled.MusicNote)
     object Progress : Dest("progress", "Progreso", Icons.Filled.Star)
-    object Wilfredo : Dest("wilfredo", "Wilfredo", Icons.Filled.Person)
+    object Wilfredo : Dest("wilfredo", "RIFF", Icons.Filled.Person)
     object Login : Dest("login", "Login", Icons.Filled.Person)
     object Splash : Dest("splash", "Splash", Icons.Filled.Home)
     object Onboarding : Dest("onboarding", "Onboarding", Icons.Filled.Star)

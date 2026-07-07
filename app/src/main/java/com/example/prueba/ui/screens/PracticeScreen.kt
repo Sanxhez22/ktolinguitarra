@@ -261,7 +261,7 @@ fun PracticeScreen(
                     resultado = (practiceState as? UiState.Success<PracticaResult>)?.data,
                     feedback = when (val s = feedbackState) {
                         is UiState.Success -> s.data.feedback
-                        is UiState.Loading -> "Wilfredo está analizando tu sesión... 🎸"
+                        is UiState.Loading -> "RIFF está analizando tu sesión... 🎸"
                         else -> null
                     },
                     onNueva = { nuevaSesion() },
@@ -288,7 +288,7 @@ fun EjercicioSelection(
         )
 
         Text(
-            text = "Sesión con feedback de Wilfredo 🤖",
+            text = "Sesión con feedback de RIFF 🤖",
             color = FretMuted,
             fontSize = 14.sp
         )
@@ -541,7 +541,7 @@ fun CronometroView(
                 shape = RoundedCornerShape(14.dp)
             ) {
                 Text(
-                    text = "🎙️ Concede el permiso de micrófono para que Wilfredo pueda evaluar tu sesión.",
+                    text = "🎙️ Concede el permiso de micrófono para que RIFF pueda evaluar tu sesión.",
                     modifier = Modifier.padding(12.dp),
                     color = FretText,
                     fontSize = 13.sp,
@@ -853,11 +853,11 @@ fun ResultadoView(
                             .background(FretGold, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("W", color = FretBlack, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("R", color = FretBlack, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "Feedback de Wilfredo",
+                        text = "Feedback de RIFF",
                         color = FretText,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 15.sp
@@ -1079,7 +1079,7 @@ fun EjerciciosGuiadosView(
                             .padding(12.dp)
                     ) {
                         Column {
-                            Text(text = "💡 Tip de Wilfredo", color = FretGold, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Text(text = "💡 Tip de RIFF", color = FretGold, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(text = actual.tip, color = FretText, fontSize = 13.sp)
                         }
@@ -1151,7 +1151,7 @@ fun AnalisisView() {
         }
 
         Spacer(modifier = Modifier.height(24.dp))
-        Text(text = "Wilfredo está analizando...", color = FretText, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Text(text = "RIFF está analizando...", color = FretText, fontWeight = FontWeight.Bold, fontSize = 18.sp)
         Spacer(modifier = Modifier.height(8.dp))
         Text(text = "Generando feedback personalizado 🎸", color = FretMuted, fontSize = 14.sp)
 

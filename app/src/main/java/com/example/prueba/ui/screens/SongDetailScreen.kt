@@ -100,7 +100,7 @@ fun SongDetailScreen(
         Spacer(Modifier.height(20.dp))
     }
 
-    // Plan de Wilfredo listo: diálogo con objetivos y botón para comenzar.
+    // Plan de RIFF listo: diálogo con objetivos y botón para comenzar.
     (practicarState as? UiState.Success<PlanCancionDto>)?.let { s ->
         PlanCancionDialog(
             plan = s.data,
@@ -419,7 +419,7 @@ private fun PlanCancionDialog(
         containerColor = FretSurface,
         title = {
             Text(
-                text = "Plan de Wilfredo 🎸",
+                text = "Plan de RIFF 🎸",
                 color = FretGold,
                 fontWeight = FontWeight.Bold
             )
