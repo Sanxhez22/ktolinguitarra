@@ -79,7 +79,14 @@ interface FastApiService {
         @Part file: MultipartBody.Part,
         @Query("duracion_seg") duracionSeg: Int = 0,
         @Query("ejercicio") ejercicio: String = "practica_general",
-        @Query("cancion_id") cancionId: Long? = null
+        @Query("cancion_id") cancionId: Long? = null,
+        // Práctica guiada en vivo (opcionales)
+        @Query("puntuacion") puntuacion: Double? = null,
+        @Query("estrellas") estrellas: Int? = null,
+        @Query("notas_acertadas") notasAcertadas: Int? = null,
+        @Query("notas_totales") notasTotales: Int? = null,
+        @Query("inicio") inicio: String? = null,
+        @Part("detalle_pasos") detallePasos: okhttp3.RequestBody
     ): Response<PracticaResult>
 
     // ==========================================

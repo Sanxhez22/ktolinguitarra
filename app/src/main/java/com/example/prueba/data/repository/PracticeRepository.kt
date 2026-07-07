@@ -30,12 +30,24 @@ class PracticeRepository {
         file: File,
         duracionSeg: Int = 0,
         ejercicio: String = "practica_general",
-        cancionId: Long? = null
+        cancionId: Long? = null,
+        puntuacion: Double? = null,
+        estrellas: Int? = null,
+        notasAcertadas: Int? = null,
+        notasTotales: Int? = null,
+        inicioIso: String? = null,
+        detallePasosJson: String? = null
     ): Result<PracticaResult> = runCatching {
         val mediaType = "audio/wav".toMediaTypeOrNull()
         val requestBody = file.readBytes().toRequestBody(mediaType)
         val part = MultipartBody.Part.createFormData("file", file.name, requestBody)
-        val response = api.practica(userId, part, duracionSeg, ejercicio, cancionId)
+        // detalle_pasos viaja como campo de formulario (JSON); vacío si no aplica.
+        val detalle = (detallePasosJson ?: "")
+            .toRequestBody("text/plain".toMediaTypeOrNull())
+        val response = api.practica(
+            userId, part, duracionSeg, ejercicio, cancionId,
+            puntuacion, estrellas, notasAcertadas, notasTotales, inicioIso, detalle
+        )
         val body = response.body()
         if (response.isSuccessful && body != null) {
             body

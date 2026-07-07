@@ -212,6 +212,14 @@ data class PasoCompletadoDto(
     val nombre: String
 )
 
+// Resumen del ExerciseAttempt registrado por el backend.
+data class IntentoDto(
+    val id: String? = null,
+    val xpGanado: Int = 0,
+    val puntuacion: Double? = null,
+    val estrellas: Int? = null
+)
+
 data class PracticaResult(
     val metrics: PracticaMetrics,
     val profile: PracticaProfile,
@@ -220,7 +228,8 @@ data class PracticaResult(
     val criterios: CriteriosDto? = null,
     val habilidadesActualizadas: List<HabilidadUpdateDto> = emptyList(),
     val subioNivel: Boolean = false,
-    val pasoCompletado: PasoCompletadoDto? = null
+    val pasoCompletado: PasoCompletadoDto? = null,
+    val intento: IntentoDto? = null
 )
 
 data class PracticaAnalyzeInfo(
@@ -300,6 +309,21 @@ data class CaminoResponse(
     val totalPasos: Int = 0
 )
 
+// Paso de práctica guiada en vivo (11 tipos: NOTE, SEQUENCE, RHYTHM, CHORD,
+// CHORD_CHANGE, STRING, SCALE, ARPEGGIO, MELODY, SONG_FRAGMENT, CUSTOM).
+data class PasoEjercicioDto(
+    val id: String,
+    val titulo: String,
+    val instruccion: String,
+    val tipo: String,
+    val objetivos: List<String> = emptyList(),
+    val duracionSeg: Int = 30,
+    val bpm: Int? = null,
+    val difficulty: Int = 1,
+    val xp: Int = 10,
+    val skill: String = ""
+)
+
 data class EjercicioDto(
     val id: String,
     val nombre: String,
@@ -311,7 +335,8 @@ data class EjercicioDto(
     val dificultad: Int = 1,
     val duracionMin: Int = 10,
     val objetivo: String = "",
-    val criterios: CriteriosDto? = null
+    val criterios: CriteriosDto? = null,
+    val pasos: List<PasoEjercicioDto> = emptyList()
 )
 
 data class CriteriosDto(

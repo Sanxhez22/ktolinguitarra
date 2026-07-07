@@ -49,6 +49,7 @@ class PracticeViewModel : ViewModel() {
     private var lastFile: File? = null
     private var lastDuracionSeg: Int = 0
     private var lastEjercicio: String = "practica_general"
+    private var lastVivo: ResultadoVivo? = null
 
     /** Carga la metadata del ejercicio (objetivo, dificultad, criterios). */
     fun loadEjercicio(id: String) {
@@ -97,6 +98,26 @@ class PracticeViewModel : ViewModel() {
         lastFile = file
         lastDuracionSeg = duracionSeg
         lastEjercicio = ejercicio
+        lastVivo = null
+        upload()
+    }
+
+    /**
+     * Envía una sesión de práctica guiada EN VIVO: el WAV grabado por el
+     * motor único + los resultados calculados en el dispositivo (puntuación,
+     * estrellas, pasos). El backend registra el ExerciseAttempt completo.
+     */
+    fun submitLiveSession(res: ResultadoVivo) {
+        if (res.wav == null) {
+            _practiceState.value = UiState.Error(
+                "No se capturó audio de la sesión en vivo. Verifica el permiso de micrófono."
+            )
+            return
+        }
+        lastFile = res.wav
+        lastDuracionSeg = res.duracionSeg
+        lastEjercicio = res.ejercicioId
+        lastVivo = res
         upload()
     }
 
@@ -117,7 +138,15 @@ class PracticeViewModel : ViewModel() {
                 return@launch
             }
 
-            practiceRepository.submitPractice(session.id, file, lastDuracionSeg, lastEjercicio, cancionId)
+            practiceRepository.submitPractice(
+                session.id, file, lastDuracionSeg, lastEjercicio, cancionId,
+                puntuacion = lastVivo?.puntuacion,
+                estrellas = lastVivo?.estrellas,
+                notasAcertadas = lastVivo?.notasAcertadas,
+                notasTotales = lastVivo?.notasTotales,
+                inicioIso = lastVivo?.inicioIso,
+                detallePasosJson = lastVivo?.detallePasosJson
+            )
                 .onSuccess { result ->
                     _practiceState.value = UiState.Success(result)
                     file.delete()

@@ -48,7 +48,7 @@ private val EJERCICIOS = listOf(
     Ejercicio("calentamiento", "Calentamiento", "🔥", "Ejercicios de dedos")
 )
 
-enum class FasePractica { SELECCION, MODO, GUIADO, CRONOMETRO, ANALISIS, RESULTADO }
+enum class FasePractica { SELECCION, MODO, GUIADO, EN_VIVO, CRONOMETRO, ANALISIS, RESULTADO }
 
 @Composable
 fun PracticeScreen(
@@ -68,6 +68,7 @@ fun PracticeScreen(
     val feedbackState by practiceViewModel.feedbackState.collectAsState()
     val ejercicioInfo by practiceViewModel.ejercicioInfo.collectAsState()
     val songPlan by practiceViewModel.songPlan.collectAsState()
+    val liveViewModel: com.example.prueba.viewmodel.GuidedPracticeViewModel = viewModel()
 
     // Práctica de una canción (Song Detail): asocia la sesión y trae el plan.
     LaunchedEffect(cancionId) {
@@ -120,6 +121,7 @@ fun PracticeScreen(
 
     fun nuevaSesion() {
         recorder.discard()
+        liveViewModel.cancelar()
         practiceViewModel.resetPractice()
         fase = FasePractica.SELECCION
         ejercicioSel = null
@@ -146,18 +148,62 @@ fun PracticeScreen(
             }
 
             FasePractica.MODO -> {
+                val info = ejercicioInfo?.takeIf { it.id == ejercicioSel!!.id }
+                val tienePasosVivo = info?.pasos?.isNotEmpty() == true
                 EjercicioModo(
                     ejercicio = ejercicioSel!!,
-                    info = ejercicioInfo?.takeIf { it.id == ejercicioSel!!.id },
+                    info = info,
                     songPlan = songPlan,
-                    tieneGuiada = EJERCICIOS_POR_TIPO.containsKey(ejercicioSel!!.id),
+                    // Guiada disponible si hay pasos en vivo (backend) o
+                    // contenido estático local (fallback sin conexión).
+                    tieneGuiada = tienePasosVivo || EJERCICIOS_POR_TIPO.containsKey(ejercicioSel!!.id),
                     onLibre = {
                         activo = true
                         fase = FasePractica.CRONOMETRO
                     },
-                    onGuiado = { fase = FasePractica.GUIADO },
+                    onGuiado = {
+                        fase = if (tienePasosVivo) FasePractica.EN_VIVO else FasePractica.GUIADO
+                    },
                     onBack = { fase = FasePractica.SELECCION }
                 )
+            }
+
+            FasePractica.EN_VIVO -> {
+                if (!hasMicPermission) {
+                    LaunchedEffect(Unit) {
+                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "🎙️ La práctica en vivo necesita el micrófono para escucharte.",
+                            color = FretText,
+                            fontSize = 15.sp
+                        )
+                        TextButton(onClick = { fase = FasePractica.MODO }) {
+                            Text("Volver", color = FretMuted)
+                        }
+                    }
+                } else {
+                    val info = ejercicioInfo?.takeIf { it.id == ejercicioSel!!.id }
+                    if (info != null) {
+                        GuidedLiveView(
+                            liveViewModel = liveViewModel,
+                            ejercicio = info,
+                            onFinalizado = { res ->
+                                practiceViewModel.submitLiveSession(res)
+                                fase = FasePractica.ANALISIS
+                            },
+                            onCancelar = { fase = FasePractica.MODO }
+                        )
+                    } else {
+                        // Sin metadata (offline): cae al guiado estático local.
+                        LaunchedEffect(Unit) { fase = FasePractica.GUIADO }
+                    }
+                }
             }
 
             FasePractica.GUIADO -> {
@@ -672,6 +718,49 @@ fun ResultadoView(
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp
             )
+        }
+
+        // Resultado de la práctica en vivo: estrellas, puntuación y XP.
+        val intentoVivo = resultado?.intento
+        if (intentoVivo?.estrellas != null) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = FretSurface),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        repeat(3) { i ->
+                            Text(
+                                text = if (i < (intentoVivo.estrellas ?: 0)) "⭐" else "☆",
+                                fontSize = 34.sp
+                            )
+                        }
+                    }
+                    intentoVivo.puntuacion?.let {
+                        Text(
+                            text = "${it.toInt()} / 100",
+                            color = FretGold,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 26.sp
+                        )
+                    }
+                    if (intentoVivo.xpGanado > 0) {
+                        Text(
+                            text = "+${intentoVivo.xpGanado} XP",
+                            color = Color(0xFF9EF01A),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+            }
         }
 
         val mins = segundos / 60
