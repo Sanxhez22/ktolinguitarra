@@ -42,6 +42,7 @@ sealed class Dest(val route: String, val label: String, val icon: ImageVector) {
     object Splash : Dest("splash", "Splash", Icons.Filled.Home)
     object Onboarding : Dest("onboarding", "Onboarding", Icons.Filled.Star)
     object Camino : Dest("camino", "Mi camino", Icons.Filled.Star)
+    object Biblioteca : Dest("biblioteca", "Mi biblioteca", Icons.Filled.MusicNote)
     object SongDetail : Dest("songDetail/{songId}", "Detalle", Icons.Filled.MusicNote)
 
 }
@@ -94,8 +95,8 @@ fun AppNav() {
                     style = MaterialTheme.typography.titleLarge
                 )
 
-                // El drawer incluye, además de las pestañas, el Camino (P1).
-                (bottomItems + Dest.Camino).forEach { screen ->
+                // El drawer incluye, además de las pestañas, Camino y Biblioteca.
+                (bottomItems + Dest.Camino + Dest.Biblioteca).forEach { screen ->
                     NavigationDrawerItem(
                         label = { Text(screen.label) },
                         selected = currentRoute == screen.route,
@@ -235,6 +236,12 @@ fun AppNav() {
                 }
                 composable(Dest.Camino.route) {
                     CaminoScreen(onPracticar = { ej -> go("practice?ej=$ej") })
+                }
+                composable(Dest.Biblioteca.route) {
+                    BibliotecaScreen(
+                        onSongClick = { id -> navController.navigate(songDetailRoute(id)) },
+                        onBuscar = { go(Dest.Search.route) }
+                    )
                 }
                 composable(Dest.Wilfredo.route) { ChatScreen() }
                 composable(
