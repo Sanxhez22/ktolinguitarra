@@ -110,7 +110,13 @@ class WavRecorder(
         record = null
     }
 
-    private fun writeWav(samples: ShortArray): File {
+    private fun writeWav(samples: ShortArray): File =
+        PcmWav.escribir(outputDir, samples, sampleRate)
+}
+
+/** Escritor WAV compartido (PCM 16-bit mono) para los motores de captura. */
+internal object PcmWav {
+    fun escribir(outputDir: File, samples: ShortArray, sampleRate: Int): File {
         val dataSize = samples.size * 2
         val file = File(outputDir, "practica_${System.currentTimeMillis()}.wav")
 
