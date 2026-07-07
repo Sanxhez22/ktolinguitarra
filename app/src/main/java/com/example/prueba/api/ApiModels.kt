@@ -125,7 +125,9 @@ data class PipelineStage(
 data class WilfredoChatRequest(
     val mensaje: String,
     val nivel: String = "principiante",
-    val historial: List<String> = emptyList()
+    val historial: List<String> = emptyList(),
+    // Con userId, Wilfredo responde como tutor con memoria de desempeño.
+    val userId: String? = null
 )
 
 data class WilfredoChatInfo(
