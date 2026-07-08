@@ -3,8 +3,10 @@ package com.example.prueba.ui.screens
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
@@ -14,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -22,6 +25,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.prueba.api.EjercicioDto
+import com.example.prueba.data.model.CatalogoAcordes
+import com.example.prueba.ui.components.DiagramaAcorde
 import com.example.prueba.ui.theme.FretBlack
 import com.example.prueba.ui.theme.FretGold
 import com.example.prueba.ui.theme.FretMuted
@@ -52,6 +57,15 @@ fun GuidedLiveView(
 
     when (state.fase) {
         FaseVivo.PREPARANDO, FaseVivo.CUENTA -> CuentaRegresivaView(state.cuenta, state.fase)
+
+        FaseVivo.GUIA -> GuiaAcordeView(
+            state = state,
+            onSaltar = { liveViewModel.saltarGuia() },
+            onCancelar = {
+                liveViewModel.cancelar()
+                onCancelar()
+            }
+        )
 
         FaseVivo.ERROR -> Column(
             modifier = Modifier.fillMaxSize(),
@@ -84,6 +98,97 @@ fun GuidedLiveView(
                 onCancelar()
             }
         )
+    }
+}
+
+/**
+ * Guía visual del acorde (antes de la detección): nombre, diagrama que se
+ * arma dedo a dedo con su instrucción, y unos segundos para acomodar la
+ * mano. La detección arranca sola al terminar; "Empezar ya" la adelanta.
+ */
+@Composable
+private fun GuiaAcordeView(
+    state: com.example.prueba.viewmodel.LiveState,
+    onSaltar: () -> Unit,
+    onCancelar: () -> Unit
+) {
+    val formas = remember(state.guiaAcordes) {
+        state.guiaAcordes.mapNotNull { CatalogoAcordes.buscar(it) }
+    }
+    if (formas.isEmpty()) return
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "Paso ${state.pasoIdx + 1} de ${state.totalPasos} · ${state.titulo}",
+            color = FretMuted,
+            fontSize = 13.sp
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = if (formas.size == 1) "Aprende el acorde" else "Repasa los acordes",
+            color = FretText,
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp
+        )
+        Spacer(Modifier.height(12.dp))
+
+        if (formas.size == 1) {
+            val forma = formas.first()
+            val resaltado = (state.guiaPasoIdx - 1)
+                .takeIf { it in 0 until forma.totalPasosColocacion }
+            DiagramaAcorde(
+                forma = forma,
+                modifier = Modifier.width(210.dp),
+                pasosVisibles = state.guiaPasoIdx,
+                pasoResaltado = resaltado
+            )
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                formas.take(3).forEach { forma ->
+                    DiagramaAcorde(forma = forma, modifier = Modifier.width(105.dp))
+                }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = FretSurface),
+            shape = RoundedCornerShape(18.dp)
+        ) {
+            Text(
+                text = state.guiaTexto.ifEmpty { "Observa el diagrama…" },
+                color = FretText,
+                fontSize = 15.sp,
+                lineHeight = 21.sp,
+                modifier = Modifier.padding(16.dp)
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "🎙 La detección empezará automáticamente",
+            color = FretMuted,
+            fontSize = 12.sp
+        )
+        Spacer(Modifier.height(4.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(onClick = onCancelar) {
+                Text("Cancelar", color = FretMuted, fontSize = 13.sp)
+            }
+            TextButton(onClick = onSaltar) {
+                Text("Ya lo sé, empezar ▶", color = FretGold, fontWeight = FontWeight.SemiBold)
+            }
+        }
     }
 }
 

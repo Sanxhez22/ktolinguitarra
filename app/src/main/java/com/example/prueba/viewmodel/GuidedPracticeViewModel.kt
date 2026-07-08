@@ -7,6 +7,9 @@ import com.example.prueba.api.EjercicioDto
 import com.example.prueba.api.PasoEjercicioDto
 import com.example.prueba.audio.LivePracticeEngine
 import com.example.prueba.audio.noteNameToFreq
+import com.example.prueba.data.model.AcordeForma
+import com.example.prueba.data.model.CatalogoAcordes
+import com.example.prueba.data.model.instruccionColocacion
 import kotlin.math.abs
 import kotlin.math.ln
 import kotlin.math.roundToInt
@@ -34,6 +37,14 @@ private const val FRAMES_SOSTENIDOS = 3
 /** Tolerancia en cents para validar una cuerda al aire en pasos STRING. */
 private const val TOLERANCIA_CENTS_STRING = 35.0
 
+/** Tipos de paso que muestran la guía visual del acorde antes de detectar. */
+private val TIPOS_ACORDE = setOf("CHORD", "CHORD_CHANGE")
+
+/** Ritmo de la guía: revelado de cada dedo y pausa para acomodar la mano. */
+private const val MS_GUIA_POR_DEDO = 2200L
+private const val MS_GUIA_ACOMODAR = 3000L
+private const val MS_GUIA_CAMBIO = 5000L
+
 /**
  * ¿El frame detectado cumple el objetivo del paso?
  *
@@ -55,7 +66,7 @@ private fun cumpleObjetivo(frame: LivePracticeEngine.LiveFrame, objetivo: String
     return abs(cents) <= TOLERANCIA_CENTS_STRING
 }
 
-enum class FaseVivo { PREPARANDO, CUENTA, PASO, TRANSICION, FINALIZADO, ERROR }
+enum class FaseVivo { PREPARANDO, CUENTA, GUIA, PASO, TRANSICION, FINALIZADO, ERROR }
 enum class FeedbackVivo { NEUTRO, ACIERTO, FALLO }
 
 data class LiveState(
@@ -78,7 +89,13 @@ data class LiveState(
     val progresoPaso: Float = 0f,
     val progresoGlobal: Float = 0f,
     val puntuacionViva: Int = 0,
-    val error: String? = null
+    val error: String? = null,
+    // Guía visual de acordes (solo pasos CHORD / CHORD_CHANGE con forma
+    // conocida en el catálogo). guiaAcordes sigue disponible durante PASO
+    // para mostrar los mini-diagramas mientras se detecta.
+    val guiaAcordes: List<String> = emptyList(),
+    val guiaPasoIdx: Int = 0,
+    val guiaTexto: String = ""
 )
 
 /** Resultado final de la sesión en vivo, listo para enviarse a /practica. */
@@ -123,6 +140,7 @@ class GuidedPracticeViewModel : ViewModel() {
     private var inicioIso: String = ""
     private var framesJob: kotlinx.coroutines.Job? = null
     private var sesionJob: kotlinx.coroutines.Job? = null
+    private var guiaJob: kotlinx.coroutines.Job? = null
 
     // Estado interno del paso en curso.
     private var objetivoIdx = 0
@@ -135,7 +153,7 @@ class GuidedPracticeViewModel : ViewModel() {
     fun iniciar(ejercicio: EjercicioDto) {
         val f = _state.value.fase
         // Sesión activa: no reiniciar. Sesión terminada/limpia: reset completo.
-        if (f == FaseVivo.CUENTA || f == FaseVivo.PASO || f == FaseVivo.TRANSICION) return
+        if (f == FaseVivo.CUENTA || f == FaseVivo.GUIA || f == FaseVivo.PASO || f == FaseVivo.TRANSICION) return
         reset()
 
         pasos = ejercicio.pasos
@@ -164,7 +182,10 @@ class GuidedPracticeViewModel : ViewModel() {
             }
             arrancarPaso(0)
             // Timer global de 1 s: descuenta el paso y cierra al agotarse.
-            while (_state.value.fase == FaseVivo.PASO || _state.value.fase == FaseVivo.TRANSICION) {
+            // Durante GUIA el tiempo del paso NO corre (solo se descuenta en PASO).
+            while (_state.value.fase == FaseVivo.PASO || _state.value.fase == FaseVivo.TRANSICION ||
+                _state.value.fase == FaseVivo.GUIA
+            ) {
                 delay(1000)
                 val s = _state.value
                 if (s.fase != FaseVivo.PASO) continue
@@ -207,8 +228,16 @@ class GuidedPracticeViewModel : ViewModel() {
         framesEnError = 0
         ataquesPaso = 0
         pasoTerminado = false
+        // Pasos de acorde con forma en el catálogo: primero la guía visual
+        // (diagrama + colocación dedo a dedo) y recién después la detección.
+        val formasGuia = if (paso.tipo in TIPOS_ACORDE) {
+            paso.objetivos.mapNotNull { CatalogoAcordes.buscar(it) }
+        } else emptyList()
         _state.value = _state.value.copy(
-            fase = FaseVivo.PASO,
+            fase = if (formasGuia.isEmpty()) FaseVivo.PASO else FaseVivo.GUIA,
+            guiaAcordes = formasGuia.map { it.nombre },
+            guiaPasoIdx = 0,
+            guiaTexto = "",
             pasoIdx = idx,
             titulo = paso.titulo,
             instruccion = paso.instruccion,
@@ -222,6 +251,60 @@ class GuidedPracticeViewModel : ViewModel() {
             segundosRestantes = paso.duracionSeg,
             progresoPaso = 0f,
             progresoGlobal = idx.toFloat() / pasos.size
+        )
+        if (formasGuia.isNotEmpty()) lanzarGuia(formasGuia, paso.tipo)
+    }
+
+    /**
+     * Secuencia de la guía visual: revela la colocación paso a paso (cejilla
+     * y dedos) con su instrucción hablada, deja unos segundos para acomodar
+     * la mano y arranca la detección automáticamente. El micrófono ya está
+     * abierto, pero los frames se ignoran hasta entrar en PASO.
+     */
+    private fun lanzarGuia(formas: List<AcordeForma>, tipo: String) {
+        guiaJob?.cancel()
+        guiaJob = viewModelScope.launch {
+            if (tipo == "CHORD" && formas.size == 1) {
+                val forma = formas.first()
+                for (i in 0 until forma.totalPasosColocacion) {
+                    _state.value = _state.value.copy(
+                        guiaPasoIdx = i + 1,
+                        guiaTexto = instruccionColocacion(forma, i) ?: ""
+                    )
+                    delay(MS_GUIA_POR_DEDO)
+                }
+                _state.value = _state.value.copy(
+                    guiaTexto = "Ahora toca todas las cuerdas marcadas, que suene completo."
+                )
+                delay(MS_GUIA_ACOMODAR)
+            } else {
+                // Cambios de acorde: se muestran todas las formas completas.
+                _state.value = _state.value.copy(
+                    guiaPasoIdx = Int.MAX_VALUE,
+                    guiaTexto = "Repasa las posiciones: " +
+                        formas.joinToString(" → ") { it.nombre } +
+                        ". Acomoda la mano en el primer acorde."
+                )
+                delay(MS_GUIA_CAMBIO)
+            }
+            empezarDeteccion()
+        }
+    }
+
+    /** El usuario ya conoce el acorde: salta la guía y detecta ya. */
+    fun saltarGuia() {
+        if (_state.value.fase != FaseVivo.GUIA) return
+        guiaJob?.cancel()
+        guiaJob = null
+        empezarDeteccion()
+    }
+
+    private fun empezarDeteccion() {
+        if (_state.value.fase != FaseVivo.GUIA) return
+        _state.value = _state.value.copy(
+            fase = FaseVivo.PASO,
+            guiaPasoIdx = Int.MAX_VALUE,
+            guiaTexto = ""
         )
     }
 
@@ -379,8 +462,10 @@ class GuidedPracticeViewModel : ViewModel() {
     private fun reset() {
         framesJob?.cancel()
         sesionJob?.cancel()
+        guiaJob?.cancel()
         framesJob = null
         sesionJob = null
+        guiaJob = null
         engine?.discard()
         engine = null
         resultados.clear()
