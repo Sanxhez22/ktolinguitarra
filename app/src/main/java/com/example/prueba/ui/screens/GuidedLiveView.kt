@@ -315,6 +315,22 @@ private fun SesionEnVivoView(
                             fontSize = 13.sp
                         )
                     } else {
+                        // Recordatorio visual del acorde mientras se detecta.
+                        val formasMini = remember(state.guiaAcordes) {
+                            state.guiaAcordes.mapNotNull { CatalogoAcordes.buscar(it) }
+                        }
+                        if (formasMini.isNotEmpty()) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                formasMini.take(3).forEach { forma ->
+                                    DiagramaAcorde(
+                                        forma = forma,
+                                        modifier = Modifier.width(if (formasMini.size == 1) 110.dp else 84.dp),
+                                        compacto = true
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                        }
                         Text(
                             text = state.objetivoActual?.let { "🎸 ${state.tipo.replace('_', ' ')}" } ?: "🎸",
                             color = FretMuted,

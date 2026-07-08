@@ -49,13 +49,19 @@ fun DiagramaAcorde(
     modifier: Modifier = Modifier,
     pasosVisibles: Int = Int.MAX_VALUE,
     pasoResaltado: Int? = null,
-    mostrarNombre: Boolean = true
+    mostrarNombre: Boolean = true,
+    compacto: Boolean = false
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         if (mostrarNombre) {
-            Text(forma.nombre, color = FretGold, fontWeight = FontWeight.Black, fontSize = 22.sp)
-            Text(forma.nombreLargo, color = FretMuted, fontSize = 12.sp)
-            Spacer(Modifier.height(6.dp))
+            Text(
+                forma.nombre,
+                color = FretGold,
+                fontWeight = FontWeight.Black,
+                fontSize = if (compacto) 15.sp else 22.sp
+            )
+            if (!compacto) Text(forma.nombreLargo, color = FretMuted, fontSize = 12.sp)
+            Spacer(Modifier.height(if (compacto) 2.dp else 6.dp))
         }
 
         // Un progreso animado por paso de colocación (cejilla + dedos).
