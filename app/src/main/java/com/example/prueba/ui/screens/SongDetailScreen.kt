@@ -269,9 +269,21 @@ private fun SongDetailContent(
     }
 
     // ---------- Pistas ----------
-    if (det.pistas.isNotEmpty()) {
+    // Solo pistas de guitarra: la app está enfocada únicamente en guitarra,
+    // así que Bass, voz y demás instrumentos no se muestran. El backend sigue
+    // devolviendo todas las pistas; el filtro es solo de experiencia de usuario.
+    val pistasGuitarra = remember(det.songId) {
+        det.pistas.filter { p ->
+            !p.esVoz &&
+                p.instrumento.contains("guitar", ignoreCase = true) &&
+                !p.instrumento.contains("bass", ignoreCase = true)
+        }
+    }
+    if (pistasGuitarra.isNotEmpty()) {
         var pistaSel by remember(det.songId) {
-            mutableIntStateOf(det.pistaDefault.coerceIn(0, det.pistas.lastIndex))
+            // Conserva la pista por defecto del backend si es de guitarra.
+            val def = det.pistas.getOrNull(det.pistaDefault)
+            mutableIntStateOf(pistasGuitarra.indexOf(def).coerceAtLeast(0))
         }
         Text("Pistas de la tablatura", color = FretMuted, fontSize = 12.sp)
         Row(
@@ -280,7 +292,7 @@ private fun SongDetailContent(
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            det.pistas.forEachIndexed { i, p ->
+            pistasGuitarra.forEachIndexed { i, p ->
                 val isSel = i == pistaSel
                 Surface(
                     color = if (isSel) FretGold else FretSurface,
@@ -288,7 +300,7 @@ private fun SongDetailContent(
                     modifier = Modifier.clickable { pistaSel = i }
                 ) {
                     Text(
-                        text = if (p.esVoz) "Voz" else p.instrumento,
+                        text = p.instrumento,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                         color = if (isSel) FretBlack else FretText,
                         fontSize = 13.sp,
@@ -297,7 +309,7 @@ private fun SongDetailContent(
                 }
             }
         }
-        det.pistas.getOrNull(pistaSel)?.let { p ->
+        pistasGuitarra.getOrNull(pistaSel)?.let { p ->
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF101722)),
