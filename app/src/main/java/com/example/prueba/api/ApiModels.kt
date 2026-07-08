@@ -219,7 +219,10 @@ data class IntentoDto(
     val id: String? = null,
     val xpGanado: Int = 0,
     val puntuacion: Double? = null,
-    val estrellas: Int? = null
+    val estrellas: Int? = null,
+    // Progreso real del ejercicio en vivo (aditivos: null en backend previo).
+    val notasAcertadas: Int? = null,
+    val notasTotales: Int? = null
 )
 
 data class PracticaResult(

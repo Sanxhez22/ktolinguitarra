@@ -745,10 +745,34 @@ fun ResultadoView(
                     }
                     intentoVivo.puntuacion?.let {
                         Text(
-                            text = "${it.toInt()} / 100",
+                            text = "${it.toInt()}%",
                             color = FretGold,
                             fontWeight = FontWeight.Black,
                             fontSize = 26.sp
+                        )
+                        Text(
+                            text = "Puntuación obtenida",
+                            color = FretMuted,
+                            fontSize = 11.sp
+                        )
+                    }
+                    // Progreso real del ejercicio: objetivos logrados en vivo.
+                    val acertadas = intentoVivo.notasAcertadas
+                    val totales = intentoVivo.notasTotales
+                    if (acertadas != null && totales != null && totales > 0) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        LinearProgressIndicator(
+                            progress = { (acertadas.toFloat() / totales).coerceIn(0f, 1f) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp),
+                            color = Color(0xFF4ADE80),
+                            trackColor = Color(0xFF1F252F)
+                        )
+                        Text(
+                            text = "Progreso del ejercicio: $acertadas de $totales objetivos (${(acertadas * 100 / totales)}%)",
+                            color = FretText,
+                            fontSize = 12.sp
                         )
                     }
                     if (intentoVivo.xpGanado > 0) {

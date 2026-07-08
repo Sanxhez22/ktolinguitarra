@@ -172,3 +172,14 @@ fun freqToNoteName(freq: Float): String {
     val midi = (69.0 + 12.0 * (ln(freq / 440.0) / ln(2.0))).roundToInt()
     return NOMBRES_NOTA[((midi % 12) + 12) % 12] + (midi / 12 - 1)
 }
+
+private val NOTA_REGEX = Regex("^([A-G]#?)(-?\\d+)$")
+
+/** Frecuencia en Hz de una nota con octava ("D3" -> 146.83), o null si no parsea. */
+fun noteNameToFreq(nota: String): Float? {
+    val m = NOTA_REGEX.find(nota) ?: return null
+    val idx = NOMBRES_NOTA.indexOf(m.groupValues[1])
+    if (idx < 0) return null
+    val midi = (m.groupValues[2].toInt() + 1) * 12 + idx
+    return (440.0 * Math.pow(2.0, (midi - 69) / 12.0)).toFloat()
+}

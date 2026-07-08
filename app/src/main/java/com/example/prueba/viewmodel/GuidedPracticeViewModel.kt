@@ -6,6 +6,10 @@ import com.example.prueba.FretMindApp
 import com.example.prueba.api.EjercicioDto
 import com.example.prueba.api.PasoEjercicioDto
 import com.example.prueba.audio.LivePracticeEngine
+import com.example.prueba.audio.noteNameToFreq
+import kotlin.math.abs
+import kotlin.math.ln
+import kotlin.math.roundToInt
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -26,6 +30,30 @@ private val TIPOS_POR_PITCH = setOf("NOTE", "SEQUENCE", "STRING", "SCALE", "ARPE
 
 /** Frames consecutivos con la nota correcta para contar un acierto (~280 ms). */
 private const val FRAMES_SOSTENIDOS = 3
+
+/** Tolerancia en cents para validar una cuerda al aire en pasos STRING. */
+private const val TOLERANCIA_CENTS_STRING = 35.0
+
+/**
+ * ¿El frame detectado cumple el objetivo del paso?
+ *
+ * STRING: se compara la frecuencia detectada contra la frecuencia de la
+ * nota objetivo con tolerancia en cents e IGNORANDO la octava. El detector
+ * YIN salta de octava con los armónicos de algunas cuerdas al aire (la 4ª
+ * D3 se lee como D4 y la 1ª E4 como E5), lo que hacía imposible validarlas
+ * con igualdad exacta de nota+octava. Como el paso pide una cuerda al aire
+ * concreta, la clase de nota afinada es criterio suficiente.
+ *
+ * Resto de tipos por pitch: igualdad exacta nota+octava (sin cambios).
+ */
+private fun cumpleObjetivo(frame: LivePracticeEngine.LiveFrame, objetivo: String, tipo: String): Boolean {
+    if (tipo != "STRING") return frame.nota == objetivo
+    val objetivoHz = noteNameToFreq(objetivo) ?: return frame.nota == objetivo
+    if (frame.freqHz <= 0f) return false
+    val semitonos = 12.0 * ln(frame.freqHz.toDouble() / objetivoHz) / ln(2.0)
+    val cents = (semitonos - (semitonos / 12.0).roundToInt() * 12.0) * 100.0
+    return abs(cents) <= TOLERANCIA_CENTS_STRING
+}
 
 enum class FaseVivo { PREPARANDO, CUENTA, PASO, TRANSICION, FINALIZADO, ERROR }
 enum class FeedbackVivo { NEUTRO, ACIERTO, FALLO }
@@ -209,7 +237,7 @@ class GuidedPracticeViewModel : ViewModel() {
                 framesEnObjetivo = 0
                 return
             }
-            if (nota == objetivo) {
+            if (cumpleObjetivo(frame, objetivo, paso.tipo)) {
                 framesEnObjetivo++
                 framesEnError = 0
                 if (framesEnObjetivo >= FRAMES_SOSTENIDOS) {
