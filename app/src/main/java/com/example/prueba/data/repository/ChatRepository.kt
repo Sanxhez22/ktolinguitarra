@@ -18,9 +18,10 @@ class ChatRepository {
     suspend fun sendMessage(
         message: String,
         level: String = "principiante",
-        history: List<String> = emptyList()
+        history: List<String> = emptyList(),
+        userId: String? = null
     ): Result<WilfredoChatInfo> = runCatching {
-        val response = api.wilfredoChat(WilfredoChatRequest(message, level, history))
+        val response = api.wilfredoChat(WilfredoChatRequest(message, level, history, userId))
         val body = response.body()
         if (response.isSuccessful && body?.success == true && body.data != null) {
             body.data

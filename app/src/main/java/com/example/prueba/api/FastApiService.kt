@@ -1,7 +1,6 @@
 package com.example.prueba.api
 
 import okhttp3.MultipartBody
-import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -71,12 +70,117 @@ interface FastApiService {
 
     @Multipart
     @POST("/practica/analyze")
-    suspend fun practicaAnalyze(@Part("audio") audio: RequestBody): Response<PracticaAnalyzeInfo>
+    suspend fun practicaAnalyze(@Part audio: MultipartBody.Part): Response<PracticaAnalyzeInfo>
 
     @Multipart
     @POST("/practica")
     suspend fun practica(
         @Query("user_id") userId: String,
-        @Part file: MultipartBody.Part
+        @Part file: MultipartBody.Part,
+        @Query("duracion_seg") duracionSeg: Int = 0,
+        @Query("ejercicio") ejercicio: String = "practica_general",
+        @Query("cancion_id") cancionId: Long? = null,
+        // Práctica guiada en vivo (opcionales)
+        @Query("puntuacion") puntuacion: Double? = null,
+        @Query("estrellas") estrellas: Int? = null,
+        @Query("notas_acertadas") notasAcertadas: Int? = null,
+        @Query("notas_totales") notasTotales: Int? = null,
+        @Query("inicio") inicio: String? = null,
+        @Part("detalle_pasos") detallePasos: okhttp3.RequestBody
     ): Response<PracticaResult>
+
+    // ==========================================
+    // PROGRESO ENDPOINTS
+    // ==========================================
+
+    @GET("/progreso/{userId}")
+    suspend fun progreso(@Path("userId") userId: String): Response<ProgresoDto>
+
+    // ==========================================
+    // P1 - ENTRENADOR / HABILIDADES / CAMINO / EJERCICIOS
+    // ==========================================
+
+    @GET("/entrenador/{userId}")
+    suspend fun entrenador(
+        @Path("userId") userId: String,
+        @Query("tz_offset_min") tzOffsetMin: Int = 0
+    ): Response<EntrenadorResponse>
+
+    @GET("/habilidades/{userId}")
+    suspend fun habilidades(@Path("userId") userId: String): Response<HabilidadesResponse>
+
+    @GET("/camino/{userId}")
+    suspend fun camino(@Path("userId") userId: String): Response<CaminoResponse>
+
+    @GET("/ejercicios")
+    suspend fun ejercicios(@Query("habilidad") habilidad: String? = null): Response<EjerciciosResponse>
+
+    @GET("/ejercicios/{id}")
+    suspend fun ejercicio(@Path("id") id: String): Response<EjercicioDto>
+
+    // ==========================================
+    // MOTOR COGNITIVO (RIFF)
+    // ==========================================
+
+    @GET("/perfil/{userId}/hitos")
+    suspend fun hitos(
+        @Path("userId") userId: String,
+        @Query("limite") limite: Int = 10
+    ): Response<HitosResponse>
+
+    @GET("/plan/{userId}/diario")
+    suspend fun planDiario(
+        @Path("userId") userId: String,
+        @Query("tz_offset_min") tzOffsetMin: Int = 0
+    ): Response<PlanDiarioDto>
+
+    // ==========================================
+    // CANCIONES / BIBLIOTECA (Song Detail)
+    // ==========================================
+
+    @GET("/canciones/buscar")
+    suspend fun buscarCanciones(
+        @Query("q") q: String,
+        @Query("size") size: Int = 10,
+        @Query("desde") desde: Int = 0
+    ): Response<BusquedaCancionesResponse>
+
+    @GET("/canciones/{songId}")
+    suspend fun cancionDetalle(@Path("songId") songId: Long): Response<CancionDetalleDto>
+
+    @GET("/canciones/{songId}/plan")
+    suspend fun cancionPlan(
+        @Path("songId") songId: Long,
+        @Query("user_id") userId: String
+    ): Response<PlanCancionDto>
+
+    @POST("/canciones/{songId}/practicar")
+    suspend fun cancionPracticar(
+        @Path("songId") songId: Long,
+        @Query("user_id") userId: String
+    ): Response<PlanCancionDto>
+
+    @GET("/biblioteca/{userId}")
+    suspend fun biblioteca(
+        @Path("userId") userId: String,
+        @Query("tipo") tipo: String? = null
+    ): Response<BibliotecaResponse>
+
+    @GET("/biblioteca/{userId}/{songId}")
+    suspend fun bibliotecaEstado(
+        @Path("userId") userId: String,
+        @Path("songId") songId: Long
+    ): Response<BibliotecaItemDto>
+
+    @POST("/biblioteca/{userId}/{songId}")
+    suspend fun bibliotecaActualizar(
+        @Path("userId") userId: String,
+        @Path("songId") songId: Long,
+        @Body cambios: BibliotecaUpdateRequest
+    ): Response<BibliotecaItemDto>
 }
+
+data class EjerciciosResponse(
+    val ejercicios: List<EjercicioDto> = emptyList(),
+    val total: Int = 0
+)

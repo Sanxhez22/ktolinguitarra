@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.prueba.api.WilfredoAnalyzeInfo
 import com.example.prueba.api.WilfredoChatInfo
+import com.example.prueba.data.repository.AuthRepository
 import com.example.prueba.data.repository.ChatRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,7 +27,14 @@ class ChatViewModel : ViewModel() {
     ) {
         viewModelScope.launch {
             _chatState.value = UiState.Loading
-            chatRepository.sendMessage(message, level, history)
+            // Con sesión activa, Wilfredo responde como tutor con memoria.
+            val session = AuthRepository.restoreSession().getOrNull()
+            chatRepository.sendMessage(
+                message,
+                session?.nivel?.lowercase() ?: level,
+                history,
+                userId = session?.id
+            )
                 .onSuccess { info -> _chatState.value = UiState.Success(info) }
                 .onFailure { e -> _chatState.value = UiState.Error(e.message ?: "Error al enviar mensaje") }
         }

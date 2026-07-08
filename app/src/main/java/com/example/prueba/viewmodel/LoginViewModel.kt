@@ -10,10 +10,20 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class LoginViewModel : ViewModel() {
-    private val authRepository = AuthRepository()
+    private val authRepository = AuthRepository
 
     private val _loginState = MutableStateFlow<UiState<UserSession>>(UiState.Idle)
     val loginState: StateFlow<UiState<UserSession>> = _loginState.asStateFlow()
+
+    /** Indica carga mientras se muestra el diálogo de Credential Manager. */
+    fun setLoading() {
+        _loginState.value = UiState.Loading
+    }
+
+    /** Reporta un error originado en el flujo de Credential Manager (UI). */
+    fun reportError(message: String) {
+        _loginState.value = UiState.Error(message)
+    }
 
     fun signInWithGoogle(idToken: String) {
         viewModelScope.launch {

@@ -1,5 +1,9 @@
 package com.example.prueba.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -14,15 +18,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import com.example.prueba.audio.TunerEngine
 import com.example.prueba.ui.theme.*
 import kotlin.math.abs
+import kotlin.math.ln
+import kotlin.math.roundToInt
 
 data class Cuerda(val nombre: String, val freq: Float, val numero: String)
 
-private val CUERDAS = listOf(
+internal val CUERDAS = listOf(
     Cuerda("E2", 82.41f, "6ª"),
     Cuerda("A2", 110.0f, "5ª"),
     Cuerda("D3", 146.83f, "4ª"),
@@ -31,10 +40,28 @@ private val CUERDAS = listOf(
     Cuerda("E4", 329.63f, "1ª")
 )
 
+private val NOTE_NAMES = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+
+/** Convierte una frecuencia en (nota, octava, cents respecto al semitono más cercano). */
+internal fun frequencyToNote(freq: Float): Triple<String, Int, Float> {
+    val midi = 69.0 + 12.0 * (ln(freq / 440.0) / ln(2.0))
+    val midiR = midi.roundToInt()
+    val cents = ((midi - midiR) * 100.0).toFloat()
+    val name = NOTE_NAMES[((midiR % 12) + 12) % 12]
+    val octave = midiR / 12 - 1
+    return Triple(name, octave, cents)
+}
+
+/** Cuerda de guitarra más cercana a la frecuencia detectada. */
+internal fun nearestString(freq: Float): Cuerda? =
+    CUERDAS.minByOrNull { abs(it.freq - freq) }
+
 enum class Modo { AFINADOR, ACORDES }
 
 @Composable
 fun TunerScreen() {
+    val context = LocalContext.current
+
     var modo by remember { mutableStateOf(Modo.AFINADOR) }
     var activo by remember { mutableStateOf(false) }
     var nota by remember { mutableStateOf<String?>(null) }
@@ -43,6 +70,59 @@ fun TunerScreen() {
     var cents by remember { mutableFloatStateOf(0f) }
     var cuerdaDetectada by remember { mutableStateOf<Cuerda?>(null) }
     var advice by remember { mutableStateOf("") }
+
+    var hasMicPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasMicPermission = granted
+        if (granted) activo = true
+    }
+
+    // Primera nota en tono detectada: registra la "afinación real" en el
+    // backend (apaga el aviso de guitarra sin afinar si el usuario omitió
+    // el afinador del onboarding). No altera el comportamiento del afinador.
+    var notaEnTono by remember { mutableStateOf(false) }
+    LaunchedEffect(notaEnTono) {
+        if (notaEnTono) {
+            com.example.prueba.data.repository.AuthRepository.marcarAfinacionRealizada()
+        }
+    }
+
+    // Motor de captura + detección de tono. Actualiza el estado de la UI por cada lectura.
+    val engine = remember {
+        TunerEngine(onPitch = { freq ->
+            if (freq > 0f) {
+                val (n, o, c) = frequencyToNote(freq)
+                nota = n
+                octava = o
+                cents = c
+                frecuencia = freq
+                cuerdaDetectada = nearestString(freq)
+                if (abs(c) < 5f) notaEnTono = true
+            }
+        })
+    }
+
+    // Arranca/detiene el micrófono según el estado del afinador y el permiso.
+    DisposableEffect(activo, modo, hasMicPermission) {
+        if (activo && modo == Modo.AFINADOR && hasMicPermission) {
+            engine.start()
+        } else {
+            engine.stop()
+            if (!activo) {
+                nota = null
+                frecuencia = null
+                cuerdaDetectada = null
+            }
+        }
+        onDispose { engine.stop() }
+    }
 
     Column(
         modifier = Modifier
@@ -58,7 +138,7 @@ fun TunerScreen() {
             fontSize = 28.sp
         )
         Text(
-            text = "Afinación inteligente con Wilfredo 🎸",
+            text = "Afinación inteligente con RIFF 🎸",
             color = FretMuted,
             fontSize = 14.sp
         )
@@ -251,7 +331,14 @@ fun TunerScreen() {
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Button(
-                    onClick = { activo = !activo },
+                    onClick = {
+                        if (!activo) {
+                            if (hasMicPermission) activo = true
+                            else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        } else {
+                            activo = false
+                        }
+                    },
                     modifier = Modifier.weight(1f),
                     colors = if (activo) ButtonDefaults.buttonColors(
                         containerColor = Color(0xFFE94584),

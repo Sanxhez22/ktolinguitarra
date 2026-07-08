@@ -18,9 +18,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
 import androidx.navigation.compose.*
+import androidx.navigation.navArgument
 import com.example.prueba.ui.screens.*
 import kotlinx.coroutines.launch
+
+/** Ruta concreta de detalle para un songId dado. */
+fun songDetailRoute(songId: Long) = "songDetail/$songId"
 
 val NavDark = Color(0xFF15192A)
 val NavSelected = Color(0xFFD49A2A)
@@ -32,8 +37,13 @@ sealed class Dest(val route: String, val label: String, val icon: ImageVector) {
     object Practice : Dest("practice", "Práctica", Icons.Filled.GraphicEq)
     object Tuner : Dest("tuner", "Afinador", Icons.Filled.MusicNote)
     object Progress : Dest("progress", "Progreso", Icons.Filled.Star)
-    object Wilfredo : Dest("wilfredo", "Wilfredo", Icons.Filled.Person)
+    object Wilfredo : Dest("wilfredo", "RIFF", Icons.Filled.Person)
     object Login : Dest("login", "Login", Icons.Filled.Person)
+    object Splash : Dest("splash", "Splash", Icons.Filled.Home)
+    object Onboarding : Dest("onboarding", "Onboarding", Icons.Filled.Star)
+    object Camino : Dest("camino", "Mi camino", Icons.Filled.Star)
+    object Biblioteca : Dest("biblioteca", "Mi biblioteca", Icons.Filled.MusicNote)
+    object SongDetail : Dest("songDetail/{songId}", "Detalle", Icons.Filled.MusicNote)
 
 }
 
@@ -42,8 +52,12 @@ sealed class Dest(val route: String, val label: String, val icon: ImageVector) {
 fun AppNav() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
-    val showBars = currentRoute != Dest.Login.route
+    // Ruta base sin argumentos opcionales (p. ej. "practice?ej=acordes" -> "practice"),
+    // para que el resaltado de la barra siga funcionando.
+    val currentRoute = navBackStackEntry?.destination?.route?.substringBefore("?")
+    val showBars = currentRoute != Dest.Login.route &&
+        currentRoute != Dest.Splash.route &&
+        currentRoute != Dest.Onboarding.route
 
     val bottomItems = listOf(
         Dest.Home,
@@ -81,7 +95,8 @@ fun AppNav() {
                     style = MaterialTheme.typography.titleLarge
                 )
 
-                bottomItems.forEach { screen ->
+                // El drawer incluye, además de las pestañas, Camino y Biblioteca.
+                (bottomItems + Dest.Camino + Dest.Biblioteca).forEach { screen ->
                     NavigationDrawerItem(
                         label = { Text(screen.label) },
                         selected = currentRoute == screen.route,
@@ -157,25 +172,91 @@ fun AppNav() {
         ) { padding ->
             NavHost(
                 navController = navController,
-                startDestination = Dest.Login.route,
+                startDestination = Dest.Splash.route,
                 modifier = Modifier.padding(padding)
             ) {
+                composable(Dest.Splash.route) { SplashScreen(navController) }
+
                 composable(Dest.Login.route) {
                     LoginScreen(
-                        onLoginClick = {
-                            navController.navigate(Dest.Home.route) {
+                        // El onboarding solo aparece la primera vez: si el
+                        // usuario ya lo completó va directo al Home.
+                        onLoginSuccess = { onboardingCompletado ->
+                            val destino = if (onboardingCompletado) Dest.Home.route else Dest.Onboarding.route
+                            navController.navigate(destino) {
                                 popUpTo(Dest.Login.route) { inclusive = true }
                             }
                         }
                     )
                 }
 
-                composable(Dest.Home.route) { HomeScreen() }
-                composable(Dest.Search.route) { SearchScreen() }
-                composable(Dest.Practice.route) { PracticeScreen() }
+                composable(Dest.Onboarding.route) {
+                    OnboardingScreen(
+                        onFinished = {
+                            navController.navigate(Dest.Home.route) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                    )
+                }
+
+                composable(Dest.Home.route) {
+                    HomeScreen(
+                        onNavigate = { route -> go(route) },
+                        onLogout = {
+                            navController.navigate(Dest.Login.route) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                    )
+                }
+                composable(Dest.Search.route) {
+                    SearchScreen(onSongClick = { id -> navController.navigate(songDetailRoute(id)) })
+                }
+                composable(
+                    route = "practice?ej={ej}&song={song}",
+                    arguments = listOf(
+                        navArgument("ej") {
+                            type = NavType.StringType
+                            defaultValue = ""
+                        },
+                        navArgument("song") {
+                            type = NavType.StringType
+                            defaultValue = ""
+                        }
+                    )
+                ) { entry ->
+                    val ej = entry.arguments?.getString("ej")?.takeIf { it.isNotBlank() }
+                    val song = entry.arguments?.getString("song")?.toLongOrNull()
+                    PracticeScreen(ejercicioPreseleccionado = ej, cancionId = song)
+                }
                 composable(Dest.Tuner.route) { TunerScreen() }
-                composable(Dest.Progress.route) { ProgressScreen() }
+                composable(Dest.Progress.route) {
+                    ProgressScreen(onVerCamino = { go(Dest.Camino.route) })
+                }
+                composable(Dest.Camino.route) {
+                    CaminoScreen(onPracticar = { ej -> go("practice?ej=$ej") })
+                }
+                composable(Dest.Biblioteca.route) {
+                    BibliotecaScreen(
+                        onSongClick = { id -> navController.navigate(songDetailRoute(id)) },
+                        onBuscar = { go(Dest.Search.route) }
+                    )
+                }
                 composable(Dest.Wilfredo.route) { ChatScreen() }
+                composable(
+                    route = Dest.SongDetail.route,
+                    arguments = listOf(navArgument("songId") { type = NavType.LongType })
+                ) { backStackEntry ->
+                    val songId = backStackEntry.arguments?.getLong("songId") ?: 0L
+                    SongDetailScreen(
+                        songId = songId,
+                        onBack = { navController.popBackStack() },
+                        onPracticar = { ejercicioId, cancion ->
+                            navController.navigate("practice?ej=$ejercicioId&song=$cancion")
+                        }
+                    )
+                }
             }
         }
     }

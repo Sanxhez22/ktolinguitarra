@@ -12,9 +12,11 @@ class PracticeRepository {
     private val api = ApiClient.fastApiService
 
     suspend fun analyzeAudio(file: File): Result<PracticaAnalyzeInfo> = runCatching {
-        val audioBytes = file.readBytes()
-        val requestBody = audioBytes.toRequestBody("audio/wav".toMediaTypeOrNull())
-        val response = api.practicaAnalyze(requestBody)
+        val requestBody = file.readBytes().toRequestBody("audio/wav".toMediaTypeOrNull())
+        // El backend espera un UploadFile en el campo "audio": se envía como
+        // parte multipart CON filename (no como campo de formulario plano).
+        val part = MultipartBody.Part.createFormData("audio", file.name, requestBody)
+        val response = api.practicaAnalyze(part)
         val body = response.body()
         if (response.isSuccessful && body != null) {
             body
@@ -23,16 +25,38 @@ class PracticeRepository {
         }
     }
 
-    suspend fun submitPractice(userId: String, file: File): Result<PracticaResult> = runCatching {
+    suspend fun submitPractice(
+        userId: String,
+        file: File,
+        duracionSeg: Int = 0,
+        ejercicio: String = "practica_general",
+        cancionId: Long? = null,
+        puntuacion: Double? = null,
+        estrellas: Int? = null,
+        notasAcertadas: Int? = null,
+        notasTotales: Int? = null,
+        inicioIso: String? = null,
+        detallePasosJson: String? = null
+    ): Result<PracticaResult> = runCatching {
         val mediaType = "audio/wav".toMediaTypeOrNull()
         val requestBody = file.readBytes().toRequestBody(mediaType)
         val part = MultipartBody.Part.createFormData("file", file.name, requestBody)
-        val response = api.practica(userId, part)
+        // detalle_pasos viaja como campo de formulario (JSON); vacío si no aplica.
+        val detalle = (detallePasosJson ?: "")
+            .toRequestBody("text/plain".toMediaTypeOrNull())
+        val response = api.practica(
+            userId, part, duracionSeg, ejercicio, cancionId,
+            puntuacion, estrellas, notasAcertadas, notasTotales, inicioIso, detalle
+        )
         val body = response.body()
         if (response.isSuccessful && body != null) {
             body
         } else {
-            throw Exception("Error al enviar práctica")
+            // FastAPI devuelve los errores como {"detail": "..."}.
+            val detail = response.errorBody()?.string()?.let { raw ->
+                runCatching { org.json.JSONObject(raw).getString("detail") }.getOrNull()
+            }
+            throw Exception(detail ?: "Error al enviar práctica (${response.code()})")
         }
     }
 }

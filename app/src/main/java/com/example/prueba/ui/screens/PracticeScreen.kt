@@ -1,11 +1,17 @@
 package com.example.prueba.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
@@ -13,10 +19,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.prueba.api.PracticaResult
+import com.example.prueba.audio.WavRecorder
 import com.example.prueba.ui.theme.*
+import com.example.prueba.viewmodel.PracticeViewModel
+import com.example.prueba.viewmodel.UiState
 import kotlinx.coroutines.delay
 
 data class Ejercicio(
@@ -35,17 +48,86 @@ private val EJERCICIOS = listOf(
     Ejercicio("calentamiento", "Calentamiento", "🔥", "Ejercicios de dedos")
 )
 
-enum class FasePractica { SELECCION, MODO, GUIADO, CRONOMETRO, ANALISIS, RESULTADO }
+enum class FasePractica { SELECCION, MODO, GUIADO, EN_VIVO, CRONOMETRO, ANALISIS, RESULTADO }
 
 @Composable
-fun PracticeScreen() {
+fun PracticeScreen(
+    practiceViewModel: PracticeViewModel = viewModel(),
+    onSessionComplete: (() -> Unit)? = null,
+    ejercicioPreseleccionado: String? = null,
+    cancionId: Long? = null
+) {
+    val context = LocalContext.current
+
     var fase by remember { mutableStateOf(FasePractica.SELECCION) }
     var ejercicioSel by remember { mutableStateOf<Ejercicio?>(null) }
-    var modoSeleccionado by remember { mutableStateOf<String?>(null) } // "guiado" | "libre"
     var segundos by remember { mutableIntStateOf(0) }
     var activo by remember { mutableStateOf(false) }
-    var metricas by remember { mutableStateOf<Map<String, Int>?>(null) }
-    var ejerciciosCompletados by remember { mutableIntStateOf(0) }
+
+    val practiceState by practiceViewModel.practiceState.collectAsState()
+    val feedbackState by practiceViewModel.feedbackState.collectAsState()
+    val ejercicioInfo by practiceViewModel.ejercicioInfo.collectAsState()
+    val songPlan by practiceViewModel.songPlan.collectAsState()
+    val liveViewModel: com.example.prueba.viewmodel.GuidedPracticeViewModel = viewModel()
+
+    // Práctica de una canción (Song Detail): asocia la sesión y trae el plan.
+    LaunchedEffect(cancionId) {
+        cancionId?.let { practiceViewModel.loadSongPlan(it) }
+    }
+
+    // Preselección: si el entrenador o una canción recomiendan un ejercicio,
+    // saltamos directo a elegir modo. Ejercicios que no están en el catálogo
+    // local (p. ej. primera_cancion, lectura) se crean provisionales y su
+    // metadata llega del backend (ejercicioInfo).
+    LaunchedEffect(ejercicioPreseleccionado) {
+        val id = ejercicioPreseleccionado ?: return@LaunchedEffect
+        if (ejercicioSel != null) return@LaunchedEffect
+        val pre = EJERCICIOS.find { it.id == id } ?: Ejercicio(
+            id = id,
+            label = id.replace('_', ' ').replaceFirstChar { it.uppercase() },
+            emoji = "🎵",
+            desc = ""
+        )
+        ejercicioSel = pre
+        practiceViewModel.loadEjercicio(id)
+        fase = FasePractica.MODO
+    }
+
+    // Cuando llega la metadata del backend, mejora la etiqueta provisional.
+    LaunchedEffect(ejercicioInfo) {
+        val info = ejercicioInfo ?: return@LaunchedEffect
+        val sel = ejercicioSel
+        if (sel != null && sel.id == info.id && sel.desc.isEmpty()) {
+            ejercicioSel = Ejercicio(info.id, info.nombre, info.emoji, info.descripcion)
+        }
+    }
+
+    // Grabación real de la sesión: el audio se envía a POST /practica para
+    // calcular precisión/consistencia y persistir la sesión en MongoDB.
+    val recorder = remember { WavRecorder(context.cacheDir) }
+    var hasMicPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> hasMicPermission = granted }
+
+    DisposableEffect(Unit) {
+        onDispose { recorder.discard() }
+    }
+
+    fun nuevaSesion() {
+        recorder.discard()
+        liveViewModel.cancelar()
+        practiceViewModel.resetPractice()
+        fase = FasePractica.SELECCION
+        ejercicioSel = null
+        segundos = 0
+        activo = false
+    }
 
     Column(
         modifier = Modifier
@@ -57,32 +139,77 @@ fun PracticeScreen() {
         when (fase) {
             FasePractica.SELECCION -> {
                 EjercicioSelection(
-                    onSelect = { ej -> ejercicioSel = ej },
+                    onSelect = { ej ->
+                        ejercicioSel = ej
+                        practiceViewModel.loadEjercicio(ej.id)
+                    },
                     onContinuar = { ejercicioSel?.let { fase = FasePractica.MODO } }
                 )
             }
 
             FasePractica.MODO -> {
+                val info = ejercicioInfo?.takeIf { it.id == ejercicioSel!!.id }
+                val tienePasosVivo = info?.pasos?.isNotEmpty() == true
                 EjercicioModo(
                     ejercicio = ejercicioSel!!,
+                    info = info,
+                    songPlan = songPlan,
+                    // Guiada disponible si hay pasos en vivo (backend) o
+                    // contenido estático local (fallback sin conexión).
+                    tieneGuiada = tienePasosVivo || EJERCICIOS_POR_TIPO.containsKey(ejercicioSel!!.id),
                     onLibre = {
-                        modoSeleccionado = "libre"
                         activo = true
                         fase = FasePractica.CRONOMETRO
                     },
                     onGuiado = {
-                        modoSeleccionado = "guiado"
-                        fase = FasePractica.GUIADO
+                        fase = if (tienePasosVivo) FasePractica.EN_VIVO else FasePractica.GUIADO
                     },
                     onBack = { fase = FasePractica.SELECCION }
                 )
             }
 
+            FasePractica.EN_VIVO -> {
+                if (!hasMicPermission) {
+                    LaunchedEffect(Unit) {
+                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "🎙️ La práctica en vivo necesita el micrófono para escucharte.",
+                            color = FretText,
+                            fontSize = 15.sp
+                        )
+                        TextButton(onClick = { fase = FasePractica.MODO }) {
+                            Text("Volver", color = FretMuted)
+                        }
+                    }
+                } else {
+                    val info = ejercicioInfo?.takeIf { it.id == ejercicioSel!!.id }
+                    if (info != null) {
+                        GuidedLiveView(
+                            liveViewModel = liveViewModel,
+                            ejercicio = info,
+                            onFinalizado = { res ->
+                                practiceViewModel.submitLiveSession(res)
+                                fase = FasePractica.ANALISIS
+                            },
+                            onCancelar = { fase = FasePractica.MODO }
+                        )
+                    } else {
+                        // Sin metadata (offline): cae al guiado estático local.
+                        LaunchedEffect(Unit) { fase = FasePractica.GUIADO }
+                    }
+                }
+            }
+
             FasePractica.GUIADO -> {
                 EjerciciosGuiadosView(
                     ejercicioId = ejercicioSel!!.id,
-                    onFinalizar = { completados ->
-                        ejerciciosCompletados = completados
+                    onFinalizar = {
                         activo = true
                         fase = FasePractica.CRONOMETRO
                     },
@@ -90,39 +217,55 @@ fun PracticeScreen() {
                 )
             }
 
-            FasePractica.ANALISIS -> {
-                AnalisisView(
-                    onComplete = {
-                        metricas = simularMetricas(ejercicioSel!!.id, segundos)
-                        fase = FasePractica.RESULTADO
-                    }
-                )
-            }
-
             FasePractica.CRONOMETRO -> {
+                // Pide el permiso al entrar y arranca la grabación en cuanto
+                // esté concedido. Sin micrófono la sesión no puede evaluarse.
+                LaunchedEffect(hasMicPermission) {
+                    if (hasMicPermission) {
+                        recorder.start()
+                    } else {
+                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                }
                 CronometroView(
                     ejercicio = ejercicioSel!!,
                     segundos = segundos,
                     activo = activo,
+                    grabando = hasMicPermission,
                     onTick = { segundos++ },
                     onDetener = {
                         activo = false
+                        val wav = recorder.stop()
+                        practiceViewModel.submitSession(wav, segundos, ejercicioSel!!.id)
                         fase = FasePractica.ANALISIS
                     }
                 )
+            }
+
+            FasePractica.ANALISIS -> {
+                when (val s = practiceState) {
+                    is UiState.Success -> LaunchedEffect(s) { fase = FasePractica.RESULTADO }
+                    is UiState.Error -> AnalisisErrorView(
+                        mensaje = s.message,
+                        onReintentar = { practiceViewModel.retrySubmit() },
+                        onNueva = { nuevaSesion() }
+                    )
+                    else -> AnalisisView()
+                }
             }
 
             FasePractica.RESULTADO -> {
                 ResultadoView(
                     ejercicio = ejercicioSel!!,
                     segundos = segundos,
-                    metricas = metricas,
-                    onNueva = {
-                        fase = FasePractica.SELECCION
-                        ejercicioSel = null
-                        segundos = 0
-                        metricas = null
-                    }
+                    resultado = (practiceState as? UiState.Success<PracticaResult>)?.data,
+                    feedback = when (val s = feedbackState) {
+                        is UiState.Success -> s.data.feedback
+                        is UiState.Loading -> "RIFF está analizando tu sesión... 🎸"
+                        else -> null
+                    },
+                    onNueva = { nuevaSesion() },
+                    onFinalizar = onSessionComplete
                 )
             }
         }
@@ -145,7 +288,7 @@ fun EjercicioSelection(
         )
 
         Text(
-            text = "Sesión con feedback de Wilfredo 🤖",
+            text = "Sesión con feedback de RIFF 🤖",
             color = FretMuted,
             fontSize = 14.sp
         )
@@ -215,12 +358,17 @@ fun EjercicioSelection(
 @Composable
 fun EjercicioModo(
     ejercicio: Ejercicio,
+    info: com.example.prueba.api.EjercicioDto? = null,
+    songPlan: com.example.prueba.api.PlanCancionDto? = null,
+    tieneGuiada: Boolean = true,
     onLibre: () -> Unit,
     onGuiado: () -> Unit,
     onBack: () -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -237,44 +385,80 @@ fun EjercicioModo(
             }
         }
 
+        // Practicando una canción concreta: plan de Wilfredo (Song Detail).
+        if (songPlan != null) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = FretGold.copy(alpha = 0.1f)),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "🎵 ${songPlan.cancion.titulo} — ${songPlan.cancion.artista}",
+                        color = FretGold,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                    songPlan.objetivos.forEachIndexed { i, obj ->
+                        Text(
+                            text = "${i + 1}. $obj",
+                            color = FretText,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        // Objetivo y criterios de aprobación (práctica inteligente P1).
+        if (info != null) {
+            ObjetivoEjercicioCard(info)
+        }
+
         Text(
             text = "¿Cómo quieres practicar?",
             color = FretMuted,
             fontSize = 12.sp
         )
 
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onGuiado() },
-            colors = CardDefaults.cardColors(containerColor = FretSurface),
-            shape = RoundedCornerShape(20.dp)
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+        if (tieneGuiada) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onGuiado() },
+                colors = CardDefaults.cardColors(containerColor = FretSurface),
+                shape = RoundedCornerShape(20.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .background(FretGold.copy(alpha = 0.2f), RoundedCornerShape(14.dp)),
-                    contentAlignment = Alignment.Center
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("🎯", fontSize = 20.sp)
-                }
-                Spacer(modifier = Modifier.width(14.dp))
-                Column {
-                    Text(
-                        text = "Práctica guiada",
-                        color = FretText,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                    Text(
-                        text = "Ejercicios paso a paso.",
-                        color = FretMuted,
-                        fontSize = 13.sp
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(FretGold.copy(alpha = 0.2f), RoundedCornerShape(14.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("🎯", fontSize = 20.sp)
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column {
+                        Text(
+                            text = "Práctica guiada",
+                            color = FretText,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            text = "Ejercicios paso a paso.",
+                            color = FretMuted,
+                            fontSize = 13.sp
+                        )
+                    }
                 }
             }
         }
@@ -326,6 +510,7 @@ fun CronometroView(
     ejercicio: Ejercicio,
     segundos: Int,
     activo: Boolean,
+    grabando: Boolean = true,
     onTick: () -> Unit,
     onDetener: () -> Unit
 ) {
@@ -348,6 +533,22 @@ fun CronometroView(
             fontWeight = FontWeight.Bold,
             fontSize = 20.sp
         )
+
+        if (!grabando) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFE94584).copy(alpha = 0.15f)),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text(
+                    text = "🎙️ Concede el permiso de micrófono para que RIFF pueda evaluar tu sesión.",
+                    modifier = Modifier.padding(12.dp),
+                    color = FretText,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.height(32.dp))
 
@@ -408,11 +609,101 @@ fun CronometroView(
 }
 
 @Composable
+fun ObjetivoEjercicioCard(info: com.example.prueba.api.EjercicioDto) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = FretSurface),
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(text = "🎯 Objetivo", color = FretGold, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text(text = info.objetivo, color = FretText, fontSize = 14.sp, lineHeight = 19.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(text = "Dificultad ${info.dificultad}/5", color = FretMuted, fontSize = 12.sp)
+                Text(text = "~${info.duracionMin} min", color = FretMuted, fontSize = 12.sp)
+            }
+            info.criterios?.let { c ->
+                Text(
+                    text = "Apruebas con precisión ≥ ${(c.precisionMin * 100).toInt()}% " +
+                        "y consistencia ≥ ${(c.consistenciaMin * 100).toInt()}%.",
+                    color = FretMuted,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ResultadoAdaptativoCard(
+    aprobado: Boolean?,
+    actualizaciones: List<com.example.prueba.api.HabilidadUpdateDto>,
+    pasoCompletado: String?
+) {
+    val aprobadoColor = if (aprobado == true) Color(0xFF4ADE80) else Color(0xFFFB923C)
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = FretSurface),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (aprobado != null) {
+                Text(
+                    text = if (aprobado) "✅ ¡Ejercicio aprobado!" else "🔸 Sigue practicando para aprobar",
+                    color = aprobadoColor,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
+            }
+            if (pasoCompletado != null) {
+                Text(
+                    text = "🎉 ¡Completaste el paso «$pasoCompletado» de tu camino!",
+                    color = FretGold,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                    lineHeight = 19.sp
+                )
+            }
+            if (actualizaciones.isNotEmpty()) {
+                Text(text = "Habilidades entrenadas", color = FretMuted, fontSize = 12.sp)
+                actualizaciones.forEach { u ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = u.nombre + if (u.subioNivel) "  ⬆ nivel ${u.nivel}" else "",
+                            color = FretText,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = "+${(u.delta * 100).toInt()}%",
+                            color = Color(0xFF9EF01A),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun ResultadoView(
     ejercicio: Ejercicio,
     segundos: Int,
-    metricas: Map<String, Int>?,
-    onNueva: () -> Unit
+    resultado: PracticaResult?,
+    feedback: String? = null,
+    onNueva: () -> Unit,
+    onFinalizar: (() -> Unit)? = null
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Card(
@@ -429,11 +720,55 @@ fun ResultadoView(
             )
         }
 
+        // Resultado de la práctica en vivo: estrellas, puntuación y XP.
+        val intentoVivo = resultado?.intento
+        if (intentoVivo?.estrellas != null) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = FretSurface),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        repeat(3) { i ->
+                            Text(
+                                text = if (i < (intentoVivo.estrellas ?: 0)) "⭐" else "☆",
+                                fontSize = 34.sp
+                            )
+                        }
+                    }
+                    intentoVivo.puntuacion?.let {
+                        Text(
+                            text = "${it.toInt()} / 100",
+                            color = FretGold,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 26.sp
+                        )
+                    }
+                    if (intentoVivo.xpGanado > 0) {
+                        Text(
+                            text = "+${intentoVivo.xpGanado} XP",
+                            color = Color(0xFF9EF01A),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+            }
+        }
+
         val mins = segundos / 60
         val secs = segundos % 60
         val timeStr = String.format("%02d:%02d", mins, secs)
-        val puntuacion = metricas?.get("puntuacion") ?: 8
-        val bpm = metricas?.get("bpm") ?: 120
+        // Métricas reales calculadas por el backend a partir del audio grabado.
+        val precision = ((resultado?.metrics?.precision ?: 0.0) * 100).toInt()
+        val consistencia = ((resultado?.metrics?.consistencia ?: 0.0) * 100).toInt()
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -449,12 +784,12 @@ fun ResultadoView(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "$puntuacion/10",
+                        text = "$precision%",
                         color = FretGold,
                         fontWeight = FontWeight.Bold,
                         fontSize = 20.sp
                     )
-                    Text(text = "Puntuación", color = FretMuted, fontSize = 11.sp)
+                    Text(text = "Precisión", color = FretMuted, fontSize = 11.sp)
                 }
             }
             Card(
@@ -467,12 +802,12 @@ fun ResultadoView(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "$bpm",
+                        text = "$consistencia%",
                         color = Color(0xFF5AC8FA),
                         fontWeight = FontWeight.Bold,
                         fontSize = 20.sp
                     )
-                    Text(text = "BPM", color = FretMuted, fontSize = 11.sp)
+                    Text(text = "Consistencia", color = FretMuted, fontSize = 11.sp)
                 }
             }
             Card(
@@ -495,6 +830,16 @@ fun ResultadoView(
             }
         }
 
+        // Resultado adaptativo (P1): aprobado + habilidades entrenadas.
+        val actualizaciones = resultado?.habilidadesActualizadas ?: emptyList()
+        if (resultado?.aprobado != null || actualizaciones.isNotEmpty()) {
+            ResultadoAdaptativoCard(
+                aprobado = resultado?.aprobado,
+                actualizaciones = actualizaciones,
+                pasoCompletado = resultado?.pasoCompletado?.nombre
+            )
+        }
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = FretSurface),
@@ -508,18 +853,18 @@ fun ResultadoView(
                             .background(FretGold, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("W", color = FretBlack, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("R", color = FretBlack, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "Feedback de Wilfredo",
+                        text = "Feedback de RIFF",
                         color = FretText,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 15.sp
                     )
                 }
                 Text(
-                    text = "¡Buen trabajo! Tu técnica mejora sostenidamente. 🎸",
+                    text = feedback ?: "¡Buen trabajo! Tu técnica mejora sostenidamente. 🎸",
                     color = FretText,
                     fontSize = 14.sp,
                     lineHeight = 20.sp
@@ -527,28 +872,35 @@ fun ResultadoView(
             }
         }
 
-        Button(
-            onClick = onNueva,
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = FretGold, contentColor = FretBlack),
-            shape = RoundedCornerShape(20.dp)
-        ) {
-            Text("Nueva sesión", fontWeight = FontWeight.Bold)
+        if (onFinalizar != null) {
+            // Modo onboarding (primera práctica): continúa el flujo hacia Home.
+            Button(
+                onClick = onFinalizar,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = FretGold, contentColor = FretBlack),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Text("Continuar", fontWeight = FontWeight.Bold)
+            }
+            OutlinedButton(
+                onClick = onNueva,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Text("Nueva sesión")
+            }
+        } else {
+            Button(
+                onClick = onNueva,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = FretGold, contentColor = FretBlack),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Text("Nueva sesión", fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
-
-private fun simularMetricas(ejercicioId: String, duracionSeg: Int): Map<String, Int> {
-    val base = minOf(duracionSeg / 10, 10)
-    return mapOf(
-        "puntuacion" to (base + (3..5).random()),
-        "bpm" to (80..140).random(),
-        "precision" to (50..95).random(),
-        "ritmo" to (50..98).random()
-    )
-}
-
-private fun ClosedRange<Int>.random(): Int = (this.start..this.endInclusive).random()
 
 // Datos de ejercicios guiados
 private data class EjercicioGuiado(
@@ -727,7 +1079,7 @@ fun EjerciciosGuiadosView(
                             .padding(12.dp)
                     ) {
                         Column {
-                            Text(text = "💡 Tip de Wilfredo", color = FretGold, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Text(text = "💡 Tip de RIFF", color = FretGold, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(text = actual.tip, color = FretText, fontSize = 13.sp)
                         }
@@ -778,12 +1130,7 @@ fun EjerciciosGuiadosView(
 }
 
 @Composable
-fun AnalisisView(onComplete: () -> Unit) {
-    LaunchedEffect(Unit) {
-        delay(2500)
-        onComplete()
-    }
-
+fun AnalisisView() {
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -804,22 +1151,65 @@ fun AnalisisView(onComplete: () -> Unit) {
         }
 
         Spacer(modifier = Modifier.height(24.dp))
-        Text(text = "Wilfredo está analizando...", color = FretText, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Text(text = "RIFF está analizando...", color = FretText, fontWeight = FontWeight.Bold, fontSize = 18.sp)
         Spacer(modifier = Modifier.height(8.dp))
         Text(text = "Generando feedback personalizado 🎸", color = FretMuted, fontSize = 14.sp)
 
         Spacer(modifier = Modifier.height(24.dp))
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("Procesando métricas...", "Revisando historial...", "Preparando feedback...").forEachIndexed { i, t ->
-                LaunchedEffect(Unit) {
-                    kotlinx.coroutines.delay(i * 500L)
-                }
+            listOf("Subiendo tu audio...", "Calculando precisión...", "Preparando feedback...").forEach { t ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(text = "✓", color = FretGold, fontSize = 12.sp)
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(text = t, color = FretMuted, fontSize = 12.sp)
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun AnalisisErrorView(
+    mensaje: String,
+    onReintentar: () -> Unit,
+    onNueva: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(text = "😕", fontSize = 48.sp)
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = "No se pudo analizar la sesión",
+            color = FretText,
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = mensaje,
+            color = FretMuted,
+            fontSize = 14.sp,
+            lineHeight = 20.sp
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        Button(
+            onClick = onReintentar,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = FretGold, contentColor = FretBlack),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            Text("Reintentar", fontWeight = FontWeight.Bold)
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        OutlinedButton(
+            onClick = onNueva,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            Text("Nueva sesión")
         }
     }
 }

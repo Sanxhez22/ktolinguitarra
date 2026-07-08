@@ -2,87 +2,68 @@ package com.example.prueba.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.prueba.api.EntrenadorResponse
 import com.example.prueba.data.repository.AuthRepository
-import com.example.prueba.data.repository.ChatRepository
-import com.example.prueba.data.repository.ProgressRepository
+import com.example.prueba.data.repository.TrainerRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+/**
+ * Estado de la Home-entrenador (P1): el nombre del usuario + el payload
+ * completo del entrenador (recomendación, objetivo del día, habilidades,
+ * próximo logro, consejo).
+ */
 data class HomeData(
     val userName: String = "Guitarrista",
-    val aiLevel: String = "Principiante",
-    val streak: Int = 0,
-    val accuracy: Int = 0,
-    val completedSessions: Int = 0,
-    val wilfredoTip: String = "",
-    val isTipLoading: Boolean = false
+    val entrenador: EntrenadorResponse,
+    // True mientras el usuario omitió la afinación del onboarding y aún no
+    // realiza una afinación real (el backend apaga el flag).
+    val afinacionPendiente: Boolean = false,
+    // Plan del día del Motor Cognitivo (MC5); null mientras carga o si falla.
+    val plan: com.example.prueba.api.PlanDiarioDto? = null
 )
 
 class HomeViewModel : ViewModel() {
-    private val authRepository = AuthRepository()
-    private val progressRepository = ProgressRepository()
-    private val chatRepository = ChatRepository()
+    private val authRepository = AuthRepository
+    private val trainerRepository = TrainerRepository()
 
     private val _homeState = MutableStateFlow<UiState<HomeData>>(UiState.Idle)
     val homeState: StateFlow<UiState<HomeData>> = _homeState.asStateFlow()
 
-    fun loadHomeData(userId: String = "") {
+    fun loadHomeData() {
         viewModelScope.launch {
             _homeState.value = UiState.Loading
 
-            val session = authRepository.getCurrentSession()
-            val userName = session?.nombre ?: "Guitarrista"
-            val aiLevel = session?.nivel ?: "Principiante"
-
-            var streak = 0
-            var accuracy = 0
-            var completedSessions = 0
-
-            progressRepository.getUserProgress(userId).onSuccess { result ->
-                streak = (result.metrics.precision * 10).toInt()
-                accuracy = (result.metrics.consistencia * 100).toInt()
-                completedSessions = (result.metrics.error * 5).toInt()
+            // refreshSession sincroniza flags que el backend puede cambiar
+            // (p. ej. afinacion_omitida se apaga tras una afinación real).
+            val session = authRepository.refreshSession()
+            if (session == null) {
+                _homeState.value = UiState.Error("Inicia sesión para ver tu entrenador.")
+                return@launch
             }
 
-            _homeState.value = UiState.Success(
-                HomeData(
-                    userName = userName,
-                    aiLevel = aiLevel,
-                    streak = streak,
-                    accuracy = accuracy,
-                    completedSessions = completedSessions
-                )
-            )
-
-            loadWilfredoTip()
-        }
-    }
-
-    private fun loadWilfredoTip() {
-        viewModelScope.launch {
-            val current = _homeState.value
-            if (current is UiState.Success) {
-                _homeState.value = UiState.Success(current.data.copy(isTipLoading = true))
-
-                chatRepository.sendMessage(
-                    message = "Dame un consejo rápido para hoy",
-                    level = current.data.aiLevel.lowercase()
-                ).onSuccess { info ->
-                    val updated = (_homeState.value as? UiState.Success)?.data
-                    if (updated != null) {
-                        _homeState.value = UiState.Success(
-                            updated.copy(wilfredoTip = info.respuesta, isTipLoading = false)
+            trainerRepository.getEntrenador(session.id)
+                .onSuccess { entrenador ->
+                    _homeState.value = UiState.Success(
+                        HomeData(
+                            userName = session.nombre,
+                            entrenador = entrenador,
+                            afinacionPendiente = session.afinacionOmitida
                         )
-                    }
-                }.onFailure {
-                    val updated = (_homeState.value as? UiState.Success)?.data
-                    if (updated != null) {
-                        _homeState.value = UiState.Success(updated.copy(isTipLoading = false))
+                    )
+                    // Plan del día (best-effort: la Home funciona sin él).
+                    trainerRepository.getPlanDiario(session.id).onSuccess { plan ->
+                        val actual = (_homeState.value as? UiState.Success)?.data
+                        if (actual != null) {
+                            _homeState.value = UiState.Success(actual.copy(plan = plan))
+                        }
                     }
                 }
-            }
+                .onFailure { e ->
+                    _homeState.value = UiState.Error(e.message ?: "No se pudo cargar tu entrenador.")
+                }
         }
     }
 }

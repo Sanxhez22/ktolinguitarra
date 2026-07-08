@@ -9,8 +9,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object  ApiClient {
-    const val BASE_URL_FASTAPI = "http://10.0.2.2:8000/"
-    const val BASE_URL_SONGSTERR = "https://www.songsterr.com/"
+    const val BASE_URL_FASTAPI = "https://tesisguitar-production.up.railway.app/"
 
     private val gson = GsonBuilder()
         .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
@@ -24,7 +23,7 @@ object  ApiClient {
         OkHttpClient.Builder()
             .addInterceptor(loggingInterceptor)
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
             .build()
     }
@@ -37,19 +36,11 @@ object  ApiClient {
             .build()
     }
 
-    private val songsterrRetrofit: Retrofit by lazy {
-        Retrofit.Builder()
-            .baseUrl(BASE_URL_SONGSTERR)
-            .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create(gson))
-            .build()
-    }
-
     val fastApiService: FastApiService by lazy {
         fastApiRetrofit.create(FastApiService::class.java)
     }
 
-    val songsterrService: SongsterrService by lazy {
-        songsterrRetrofit.create(SongsterrService::class.java)
+    val authService: AuthService by lazy {
+        fastApiRetrofit.create(AuthService::class.java)
     }
 }
