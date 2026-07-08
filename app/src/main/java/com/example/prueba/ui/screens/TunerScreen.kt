@@ -56,6 +56,10 @@ internal fun frequencyToNote(freq: Float): Triple<String, Int, Float> {
 internal fun nearestString(freq: Float): Cuerda? =
     CUERDAS.minByOrNull { abs(it.freq - freq) }
 
+/** Cents de desviación de la frecuencia detectada respecto a una cuerda concreta. */
+internal fun centsVsCuerda(freq: Float, cuerda: Cuerda): Float =
+    (1200.0 * (ln(freq / cuerda.freq) / ln(2.0))).toFloat()
+
 enum class Modo { AFINADOR, ACORDES }
 
 @Composable
@@ -69,6 +73,7 @@ fun TunerScreen() {
     var frecuencia by remember { mutableStateOf<Float?>(null) }
     var cents by remember { mutableFloatStateOf(0f) }
     var cuerdaDetectada by remember { mutableStateOf<Cuerda?>(null) }
+    var cuerdasAfinadas by remember { mutableStateOf(setOf<String>()) }
     var advice by remember { mutableStateOf("") }
 
     var hasMicPermission by remember {
@@ -103,8 +108,15 @@ fun TunerScreen() {
                 octava = o
                 cents = c
                 frecuencia = freq
-                cuerdaDetectada = nearestString(freq)
+                val cuerda = nearestString(freq)
+                cuerdaDetectada = cuerda
                 if (abs(c) < 5f) notaEnTono = true
+                // Marca la cuerda como afinada solo si la frecuencia cae dentro
+                // del mismo rango (±5 cents) medido contra la cuerda en sí,
+                // no contra el semitono más cercano (evita falsos verdes).
+                if (cuerda != null && abs(centsVsCuerda(freq, cuerda)) < 5f) {
+                    cuerdasAfinadas = cuerdasAfinadas + cuerda.nombre
+                }
             }
         })
     }
@@ -187,10 +199,15 @@ fun TunerScreen() {
                     ) {
                         row.forEach { c ->
                             val isDetectada = cuerdaDetectada?.nombre == c.nombre
+                            val isAfinada = c.nombre in cuerdasAfinadas
                             Card(
                                 modifier = Modifier.weight(1f),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = if (isDetectada) FretGold.copy(alpha = 0.2f) else FretSurface
+                                    containerColor = when {
+                                        isAfinada -> Color(0xFF9EF01A).copy(alpha = 0.22f)
+                                        isDetectada -> FretGold.copy(alpha = 0.2f)
+                                        else -> FretSurface
+                                    }
                                 ),
                                 shape = RoundedCornerShape(16.dp)
                             ) {
@@ -199,13 +216,13 @@ fun TunerScreen() {
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Text(
-                                        text = c.numero,
-                                        color = FretMuted,
+                                        text = if (isAfinada) "${c.numero} ✓" else c.numero,
+                                        color = if (isAfinada) Color(0xFF9EF01A) else FretMuted,
                                         fontSize = 11.sp
                                     )
                                     Text(
                                         text = c.nombre,
-                                        color = FretText,
+                                        color = if (isAfinada) Color(0xFF9EF01A) else FretText,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.sp
                                     )
@@ -333,6 +350,7 @@ fun TunerScreen() {
                 Button(
                     onClick = {
                         if (!activo) {
+                            cuerdasAfinadas = emptySet()
                             if (hasMicPermission) activo = true
                             else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         } else {
