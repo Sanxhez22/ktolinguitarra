@@ -27,6 +27,26 @@ import androidx.compose.ui.unit.sp
 import com.example.prueba.api.EjercicioDto
 import com.example.prueba.data.model.CatalogoAcordes
 import com.example.prueba.ui.components.DiagramaAcorde
+import com.example.prueba.ui.components.practica.GuiaArpegio
+import com.example.prueba.ui.components.practica.GuiaCambioAcorde
+import com.example.prueba.ui.components.practica.GuiaCuerda
+import com.example.prueba.ui.components.practica.GuiaCustom
+import com.example.prueba.ui.components.practica.GuiaEscala
+import com.example.prueba.ui.components.practica.GuiaFragmentoCancion
+import com.example.prueba.ui.components.practica.GuiaMelodia
+import com.example.prueba.ui.components.practica.GuiaNota
+import com.example.prueba.ui.components.practica.GuiaRitmo
+import com.example.prueba.ui.components.practica.GuiaSecuencia
+import com.example.prueba.ui.components.practica.PasoArpegio
+import com.example.prueba.ui.components.practica.PasoCambioAcorde
+import com.example.prueba.ui.components.practica.PasoCuerda
+import com.example.prueba.ui.components.practica.PasoCustom
+import com.example.prueba.ui.components.practica.PasoEscala
+import com.example.prueba.ui.components.practica.PasoFragmentoCancion
+import com.example.prueba.ui.components.practica.PasoMelodia
+import com.example.prueba.ui.components.practica.PasoNota
+import com.example.prueba.ui.components.practica.PasoRitmo
+import com.example.prueba.ui.components.practica.PasoSecuencia
 import com.example.prueba.ui.theme.FretBlack
 import com.example.prueba.ui.theme.FretGold
 import com.example.prueba.ui.theme.FretMuted
@@ -153,26 +173,27 @@ private fun GuiaAcordeView(
                 pasoResaltado = resaltado
             )
         } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                formas.take(3).forEach { forma ->
-                    DiagramaAcorde(forma = forma, modifier = Modifier.width(105.dp))
-                }
-            }
+            // Cambio de acorde: animación dedo a dedo entre las formas.
+            GuiaCambioAcorde(state)
         }
 
-        Spacer(Modifier.height(14.dp))
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = FretSurface),
-            shape = RoundedCornerShape(18.dp)
-        ) {
-            Text(
-                text = state.guiaTexto.ifEmpty { "Observa el diagrama…" },
-                color = FretText,
-                fontSize = 15.sp,
-                lineHeight = 21.sp,
-                modifier = Modifier.padding(16.dp)
-            )
+        if (formas.size == 1) {
+            Spacer(Modifier.height(14.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = FretSurface),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Text(
+                    text = state.guiaTexto.ifEmpty { "Observa el diagrama…" },
+                    color = FretText,
+                    fontSize = 15.sp,
+                    lineHeight = 21.sp,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+        } else {
+            Spacer(Modifier.height(14.dp))
         }
 
         Spacer(Modifier.height(8.dp))
@@ -197,7 +218,23 @@ private fun GuiaAcordeView(
     }
 }
 
-/** Guía previa de pasos no-acorde: nombre, qué se aprende y aviso de inicio. */
+/** Qué aprende el usuario con cada tipo de paso (para la guía previa). */
+private fun queAprenderas(tipo: String): String = when (tipo) {
+    "NOTE" -> "Aprenderás a ubicar y tocar una nota exacta en el diapasón."
+    "STRING" -> "Aprenderás a reconocer y tocar la cuerda correcta."
+    "SEQUENCE" -> "Aprenderás a encadenar notas en orden, con dedos precisos."
+    "SCALE" -> "Aprenderás el patrón de una escala, nota por nota."
+    "ARPEGGIO" -> "Aprenderás a tocar las notas de un acorde una por una."
+    "MELODY" -> "Aprenderás a tocar una melodía siguiendo el diapasón."
+    "RHYTHM" -> "Aprenderás a mantener un patrón de rasgueo al tempo."
+    "SONG_FRAGMENT" -> "Tocarás un fragmento de canción de principio a fin."
+    else -> "Sigue la consigna del paso; la app te escucha y te da feedback."
+}
+
+/**
+ * Guía previa de pasos no-acorde: nombre del ejercicio, qué se aprende,
+ * representación gráfica animada del tipo y aviso de inicio automático.
+ */
 @Composable
 private fun GuiaGenericaView(
     state: com.example.prueba.viewmodel.LiveState,
@@ -223,6 +260,28 @@ private fun GuiaGenericaView(
             fontSize = 18.sp,
             textAlign = TextAlign.Center
         )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = queAprenderas(state.tipo),
+            color = FretGold,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(12.dp))
+
+        // Representación gráfica específica del tipo de paso.
+        when (state.tipo) {
+            "NOTE" -> GuiaNota(state)
+            "STRING" -> GuiaCuerda(state)
+            "SEQUENCE" -> GuiaSecuencia(state)
+            "SCALE" -> GuiaEscala(state)
+            "ARPEGGIO" -> GuiaArpegio(state)
+            "MELODY" -> GuiaMelodia(state)
+            "RHYTHM" -> GuiaRitmo(state)
+            "SONG_FRAGMENT" -> GuiaFragmentoCancion(state)
+            else -> GuiaCustom(state)
+        }
+
         Spacer(Modifier.height(12.dp))
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -363,53 +422,78 @@ private fun SesionEnVivoView(
                     .background(feedbackColor, RoundedCornerShape(24.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    if (state.porPitch) {
-                        Text("Toca:", color = FretMuted, fontSize = 14.sp)
-                        Text(
-                            text = state.objetivoActual ?: "—",
-                            color = when (state.feedback) {
-                                FeedbackVivo.ACIERTO -> Color(0xFF4ADE80)
-                                FeedbackVivo.FALLO -> Color(0xFFE94584)
-                                else -> FretGold
-                            },
-                            fontWeight = FontWeight.Black,
-                            fontSize = 72.sp
-                        )
-                        Text(
-                            text = state.notaDetectada?.let { "Detectado: $it" } ?: "Escuchando...",
-                            color = FretMuted,
-                            fontSize = 13.sp
-                        )
-                    } else {
-                        // Recordatorio visual del acorde mientras se detecta.
-                        val formasMini = remember(state.guiaAcordes) {
-                            state.guiaAcordes.mapNotNull { CatalogoAcordes.buscar(it) }
-                        }
-                        if (formasMini.isNotEmpty()) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                formasMini.take(3).forEach { forma ->
-                                    DiagramaAcorde(
-                                        forma = forma,
-                                        modifier = Modifier.width(if (formasMini.size == 1) 110.dp else 84.dp),
-                                        compacto = true
-                                    )
-                                }
+                Column(
+                    modifier = Modifier
+                        .verticalScroll(rememberScrollState())
+                        .padding(vertical = 10.dp, horizontal = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Representación en vivo específica de cada tipo de paso.
+                    // CHORD conserva su experiencia original.
+                    when {
+                        state.tipo == "NOTE" -> PasoNota(state)
+                        state.tipo == "STRING" -> PasoCuerda(state)
+                        state.tipo == "SEQUENCE" -> PasoSecuencia(state)
+                        state.tipo == "SCALE" -> PasoEscala(state)
+                        state.tipo == "ARPEGGIO" -> PasoArpegio(state)
+                        state.tipo == "MELODY" -> PasoMelodia(state)
+                        state.tipo == "RHYTHM" -> PasoRitmo(state)
+                        state.tipo == "SONG_FRAGMENT" -> PasoFragmentoCancion(state)
+                        state.tipo == "CHORD_CHANGE" && state.guiaAcordes.isNotEmpty() ->
+                            PasoCambioAcorde(state)
+
+                        state.tipo == "CHORD" || state.tipo == "CHORD_CHANGE" -> {
+                            // Recordatorio visual del acorde mientras se detecta.
+                            val formasMini = remember(state.guiaAcordes) {
+                                state.guiaAcordes.mapNotNull { CatalogoAcordes.buscar(it) }
                             }
-                            Spacer(Modifier.height(8.dp))
+                            if (formasMini.isNotEmpty()) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    formasMini.take(3).forEach { forma ->
+                                        DiagramaAcorde(
+                                            forma = forma,
+                                            modifier = Modifier.width(if (formasMini.size == 1) 110.dp else 84.dp),
+                                            compacto = true
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                            }
+                            Text(
+                                text = state.objetivoActual?.let { "🎸 ${state.tipo.replace('_', ' ')}" } ?: "🎸",
+                                color = FretMuted,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = "${state.aciertosPaso} / ${state.esperadosPaso}",
+                                color = if (state.feedback == FeedbackVivo.ACIERTO) Color(0xFF4ADE80) else FretGold,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 56.sp
+                            )
+                            Text("golpes detectados · sigue el pulso", color = FretMuted, fontSize = 13.sp)
                         }
-                        Text(
-                            text = state.objetivoActual?.let { "🎸 ${state.tipo.replace('_', ' ')}" } ?: "🎸",
-                            color = FretMuted,
-                            fontSize = 14.sp
-                        )
-                        Text(
-                            text = "${state.aciertosPaso} / ${state.esperadosPaso}",
-                            color = if (state.feedback == FeedbackVivo.ACIERTO) Color(0xFF4ADE80) else FretGold,
-                            fontWeight = FontWeight.Black,
-                            fontSize = 56.sp
-                        )
-                        Text("golpes detectados · sigue el pulso", color = FretMuted, fontSize = 13.sp)
+
+                        state.porPitch -> {
+                            // Tipo por pitch desconocido: objetivo en grande.
+                            Text("Toca:", color = FretMuted, fontSize = 14.sp)
+                            Text(
+                                text = state.objetivoActual ?: "—",
+                                color = when (state.feedback) {
+                                    FeedbackVivo.ACIERTO -> Color(0xFF4ADE80)
+                                    FeedbackVivo.FALLO -> Color(0xFFE94584)
+                                    else -> FretGold
+                                },
+                                fontWeight = FontWeight.Black,
+                                fontSize = 72.sp
+                            )
+                            Text(
+                                text = state.notaDetectada?.let { "Detectado: $it" } ?: "Escuchando...",
+                                color = FretMuted,
+                                fontSize = 13.sp
+                            )
+                        }
+
+                        else -> PasoCustom(state)
                     }
                     if (state.racha >= 3) {
                         Spacer(Modifier.height(8.dp))

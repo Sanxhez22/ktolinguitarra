@@ -43,7 +43,9 @@ private val TIPOS_ACORDE = setOf("CHORD", "CHORD_CHANGE")
 /** Ritmo de la guía: revelado de cada dedo y pausa para acomodar la mano. */
 private const val MS_GUIA_POR_DEDO = 2200L
 private const val MS_GUIA_ACOMODAR = 3000L
-private const val MS_GUIA_CAMBIO = 5000L
+// La guía del cambio anima cada acorde dedo a dedo: tiempo para ver un
+// ciclo completo de 2-3 formas antes de que arranque la detección.
+private const val MS_GUIA_CAMBIO = 9000L
 
 /** Guía previa de los pasos que no son de acorde (explicación + diagrama). */
 private const val MS_GUIA_PREVIA = 7000L
