@@ -68,4 +68,20 @@ object NotasGuitarra {
     /** Posiciones de una secuencia de notas (se omiten las no parseables). */
     fun posicionesDe(notas: List<String>): List<PosicionDiapason> =
         notas.mapNotNull { posicionDe(it) }
+
+    /** ¿Misma clase de nota (ignorando octava)? Para marcar raíces de escala. */
+    fun mismaClase(notaA: String, notaB: String): Boolean {
+        val a = midiDe(notaA) ?: return false
+        val b = midiDe(notaB) ?: return false
+        return a % 12 == b % 12
+    }
 }
+
+/** Instrucción hablada de una posición ("Dedo 3 en el traste 3, cuerda La (5ª)"). */
+fun descripcionPosicion(pos: PosicionDiapason): String =
+    if (pos.traste <= 0) {
+        "Cuerda ${nombreCuerda(pos.cuerda)} al aire, sin pisar ningún traste"
+    } else {
+        "Dedo ${pos.dedo ?: pos.traste.coerceAtMost(4)} en el traste ${pos.traste}, " +
+            "cuerda ${nombreCuerda(pos.cuerda)}"
+    }
