@@ -115,7 +115,12 @@ private fun GuiaAcordeView(
     val formas = remember(state.guiaAcordes) {
         state.guiaAcordes.mapNotNull { CatalogoAcordes.buscar(it) }
     }
-    if (formas.isEmpty()) return
+    if (formas.isEmpty()) {
+        // Pasos sin forma de acorde: guía previa genérica con la explicación
+        // del paso (las vistas específicas por tipo la enriquecen).
+        GuiaGenericaView(state, onSaltar, onCancelar)
+        return
+    }
 
     Column(
         modifier = Modifier
@@ -170,6 +175,68 @@ private fun GuiaAcordeView(
             )
         }
 
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "🎙 La detección empezará automáticamente",
+            color = FretMuted,
+            fontSize = 12.sp
+        )
+        Spacer(Modifier.height(4.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(onClick = onCancelar) {
+                Text("Cancelar", color = FretMuted, fontSize = 13.sp)
+            }
+            TextButton(onClick = onSaltar) {
+                Text("Ya lo sé, empezar ▶", color = FretGold, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+/** Guía previa de pasos no-acorde: nombre, qué se aprende y aviso de inicio. */
+@Composable
+private fun GuiaGenericaView(
+    state: com.example.prueba.viewmodel.LiveState,
+    onSaltar: () -> Unit,
+    onCancelar: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "Paso ${state.pasoIdx + 1} de ${state.totalPasos}",
+            color = FretMuted,
+            fontSize = 13.sp
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = state.titulo,
+            color = FretText,
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(12.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = FretSurface),
+            shape = RoundedCornerShape(18.dp)
+        ) {
+            Text(
+                text = state.instruccion,
+                color = FretText,
+                fontSize = 15.sp,
+                lineHeight = 21.sp,
+                modifier = Modifier.padding(16.dp)
+            )
+        }
         Spacer(Modifier.height(8.dp))
         Text(
             text = "🎙 La detección empezará automáticamente",

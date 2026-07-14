@@ -45,6 +45,9 @@ private const val MS_GUIA_POR_DEDO = 2200L
 private const val MS_GUIA_ACOMODAR = 3000L
 private const val MS_GUIA_CAMBIO = 5000L
 
+/** Guía previa de los pasos que no son de acorde (explicación + diagrama). */
+private const val MS_GUIA_PREVIA = 7000L
+
 /**
  * ¿El frame detectado cumple el objetivo del paso?
  *
@@ -79,6 +82,10 @@ data class LiveState(
     val tipo: String = "",
     val porPitch: Boolean = true,
     val objetivoActual: String? = null,
+    // Datos del paso para las representaciones visuales por tipo.
+    val objetivos: List<String> = emptyList(),
+    val objetivoIdx: Int = 0,
+    val bpm: Int? = null,
     val notaDetectada: String? = null,
     val feedback: FeedbackVivo = FeedbackVivo.NEUTRO,
     val racha: Int = 0,
@@ -230,11 +237,15 @@ class GuidedPracticeViewModel : ViewModel() {
         pasoTerminado = false
         // Pasos de acorde con forma en el catálogo: primero la guía visual
         // (diagrama + colocación dedo a dedo) y recién después la detección.
+        // El resto de tipos también abre con una guía previa (explicación +
+        // representación gráfica del paso); un acorde sin forma conocida
+        // sigue yendo directo a la detección, como siempre.
         val formasGuia = if (paso.tipo in TIPOS_ACORDE) {
             paso.objetivos.mapNotNull { CatalogoAcordes.buscar(it) }
         } else emptyList()
+        val conGuia = formasGuia.isNotEmpty() || paso.tipo !in TIPOS_ACORDE
         _state.value = _state.value.copy(
-            fase = if (formasGuia.isEmpty()) FaseVivo.PASO else FaseVivo.GUIA,
+            fase = if (conGuia) FaseVivo.GUIA else FaseVivo.PASO,
             guiaAcordes = formasGuia.map { it.nombre },
             guiaPasoIdx = 0,
             guiaTexto = "",
@@ -244,6 +255,9 @@ class GuidedPracticeViewModel : ViewModel() {
             tipo = paso.tipo,
             porPitch = paso.tipo in TIPOS_POR_PITCH,
             objetivoActual = paso.objetivos.firstOrNull(),
+            objetivos = paso.objetivos,
+            objetivoIdx = 0,
+            bpm = paso.bpm,
             notaDetectada = null,
             feedback = FeedbackVivo.NEUTRO,
             aciertosPaso = 0,
@@ -252,7 +266,24 @@ class GuidedPracticeViewModel : ViewModel() {
             progresoPaso = 0f,
             progresoGlobal = idx.toFloat() / pasos.size
         )
-        if (formasGuia.isNotEmpty()) lanzarGuia(formasGuia, paso.tipo)
+        if (formasGuia.isNotEmpty()) {
+            lanzarGuia(formasGuia, paso.tipo)
+        } else if (conGuia) {
+            lanzarGuiaPrevia()
+        }
+    }
+
+    /**
+     * Guía previa genérica (pasos que no son de acorde): la vista muestra la
+     * explicación y el diagrama del tipo; pasados unos segundos la detección
+     * arranca sola. "Empezar ya" (saltarGuia) la adelanta.
+     */
+    private fun lanzarGuiaPrevia() {
+        guiaJob?.cancel()
+        guiaJob = viewModelScope.launch {
+            delay(MS_GUIA_PREVIA)
+            empezarDeteccion()
+        }
     }
 
     /**
@@ -334,6 +365,7 @@ class GuidedPracticeViewModel : ViewModel() {
                         feedback = FeedbackVivo.ACIERTO,
                         notaDetectada = nota,
                         objetivoActual = paso.objetivos.getOrNull(objetivoIdx),
+                        objetivoIdx = objetivoIdx,
                         progresoPaso = objetivoIdx.toFloat() / paso.objetivos.size,
                         puntuacionViva = puntuacionViva(aciertos)
                     )
