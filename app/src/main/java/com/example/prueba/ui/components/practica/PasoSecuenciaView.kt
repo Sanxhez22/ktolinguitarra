@@ -104,11 +104,25 @@ fun GuiaSecuencia(state: LiveState) {
 fun PasoSecuencia(state: LiveState) {
     val posiciones = remember(state.objetivos) { NotasGuitarra.posicionesDe(state.objetivos) }
     val actual = state.objetivoIdx.coerceIn(0, (state.objetivos.size - 1).coerceAtLeast(0))
+    // Fingerpicking: la secuencia también indica el dedo p-i-m-a que pulsa.
+    val esFingerstyle = state.skill == "fingerstyle"
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         CaminoNotas(state.objetivos, actual)
+        if (esFingerstyle) {
+            posiciones.getOrNull(actual)?.let { pos ->
+                val dedo = dedoPima(pos.cuerda)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Dedo: $dedo (${nombrePima(dedo)})",
+                    color = FretGold,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
         Spacer(Modifier.height(8.dp))
         FretboardView(
             notas = posiciones.mapIndexed { i, pos ->
@@ -120,6 +134,7 @@ fun PasoSecuencia(state: LiveState) {
                         i == actual + 1 -> EstadoNota.SIGUIENTE
                         else -> EstadoNota.CONTEXTO
                     },
+                    etiqueta = if (esFingerstyle) dedoPima(pos.cuerda) else null,
                     orden = i + 1
                 )
             },

@@ -60,7 +60,11 @@ fun GuiaCuerda(state: LiveState) {
     }
 }
 
-/** STRING en vivo: la cuerda entera brilla y responde al feedback. */
+/**
+ * STRING en vivo: la cuerda entera brilla, y como es el paso de AFINACIÓN
+ * incluye un mini-afinador con la desviación en cents en tiempo real: la
+ * cuerda solo se valida cuando suena afinada, igual que en GuitarTuna.
+ */
 @Composable
 fun PasoCuerda(state: LiveState) {
     val cuerda = remember(state.objetivoActual) { cuerdaObjetivo(state) } ?: return
@@ -86,6 +90,23 @@ fun PasoCuerda(state: LiveState) {
             cuerdaResaltada = cuerda,
             modifier = Modifier.fillMaxWidth()
         )
-        NotaDetectadaLabel(state.notaDetectada, state.feedback)
+        Spacer(Modifier.height(4.dp))
+        MiniAfinador(cents = state.centsDetectados, toleranciaCents = 20f)
+        val cents = state.centsDetectados
+        Text(
+            text = when {
+                cents == null -> "Escuchando…"
+                kotlin.math.abs(cents) <= 20f -> "✓ Afinada, sostenla"
+                cents < 0f -> "← Aprieta la cuerda (${cents.toInt()} cents)"
+                else -> "→ Afloja la cuerda (+${cents.toInt()} cents)"
+            },
+            color = when {
+                cents == null -> FretMuted
+                kotlin.math.abs(cents) <= 20f -> VerdeOk
+                else -> FretGold
+            },
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }

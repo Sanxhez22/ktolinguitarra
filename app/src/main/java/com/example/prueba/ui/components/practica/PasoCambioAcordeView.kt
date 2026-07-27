@@ -108,8 +108,9 @@ fun GuiaCambioAcorde(state: LiveState) {
 }
 
 /**
- * CHORD_CHANGE en vivo: todos los acordes visibles; el que toca en este
- * compás se agranda con borde dorado, alternando al tempo del paso.
+ * CHORD_CHANGE en vivo: todos los acordes visibles; el objetivo ACTUAL
+ * (el que el motor espera reconocer ahora) se agranda con borde dorado y
+ * avanza solo cuando el acorde correcto suena de verdad.
  */
 @Composable
 fun PasoCambioAcorde(state: LiveState) {
@@ -118,29 +119,21 @@ fun PasoCambioAcorde(state: LiveState) {
     }
     if (formas.isEmpty()) return
 
-    // Un compás (4 pulsos) por acorde, al bpm del paso.
-    val bpm = state.bpm ?: 60
-    val msPorAcorde = 4 * 60_000 / bpm.coerceAtLeast(20)
-    val transicion = rememberInfiniteTransition(label = "cicloAcordes")
-    val fase by transicion.animateFloat(
-        initialValue = 0f,
-        targetValue = formas.size.toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = msPorAcorde * formas.size, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "faseAcordes"
-    )
-    val activo = fase.toInt().coerceIn(0, formas.size - 1)
+    // El acorde activo lo dicta el motor (objetivoIdx rota por la secuencia).
+    val activo = if (formas.isNotEmpty()) state.objetivoIdx % formas.size else 0
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("Ahora:", color = FretMuted, fontSize = 13.sp)
+        Text("Ahora toca:", color = FretMuted, fontSize = 13.sp)
         Text(
-            text = formas[activo].nombre,
-            color = FretGold,
+            text = state.objetivoActual ?: formas[activo].nombre,
+            color = when (state.feedback) {
+                com.example.prueba.viewmodel.FeedbackVivo.ACIERTO -> VerdeOk
+                com.example.prueba.viewmodel.FeedbackVivo.FALLO -> RosaError
+                else -> FretGold
+            },
             fontWeight = FontWeight.Black,
             fontSize = 30.sp
         )
@@ -168,9 +161,13 @@ fun PasoCambioAcorde(state: LiveState) {
         }
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "${state.aciertosPaso} / ${state.esperadosPaso} golpes · " +
-                "cambia de acorde con cada compás",
-            color = FretMuted,
+            text = "Cambio ${state.aciertosPaso} de ${state.esperadosPaso} · " +
+                (state.acordeDetectado?.let { "suena: $it" } ?: "escuchando…"),
+            color = when (state.feedback) {
+                com.example.prueba.viewmodel.FeedbackVivo.ACIERTO -> VerdeOk
+                com.example.prueba.viewmodel.FeedbackVivo.FALLO -> RosaError
+                else -> FretMuted
+            },
             fontSize = 13.sp,
             textAlign = TextAlign.Center
         )

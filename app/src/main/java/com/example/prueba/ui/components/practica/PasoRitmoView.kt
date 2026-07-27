@@ -1,6 +1,7 @@
 package com.example.prueba.ui.components.practica
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -20,7 +21,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
@@ -35,35 +38,46 @@ import com.example.prueba.ui.theme.FretSurface
 import com.example.prueba.ui.theme.FretText
 import com.example.prueba.viewmodel.FeedbackVivo
 import com.example.prueba.viewmodel.LiveState
+import com.example.prueba.viewmodel.TimingVivo
 
 /**
- * Barra de ritmo: el patrón de rasgueo (↓ / ↑) como fichas y un pulso de
- * metrónomo visual que recorre el patrón al tempo del paso. Es la
- * representación característica de RHYTHM (guía y vivo).
+ * Barra de ritmo: el patrón de rasgueo (↓ / ↑) como fichas y un metrónomo
+ * visual. Si [pulsoExterno] llega (>= 0) el compás lo marca el reloj del
+ * motor de práctica — el MISMO reloj contra el que se validan los golpes —;
+ * si no, se anima sola al bpm (fase de guía).
  */
 @Composable
-private fun BarraRitmo(patron: List<String>, bpm: Int, grande: Boolean) {
-    val msPorPulso = 60_000 / bpm.coerceAtLeast(20)
-    val transicion = rememberInfiniteTransition(label = "ritmo")
-    val fase by transicion.animateFloat(
-        initialValue = 0f,
-        targetValue = patron.size.toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = msPorPulso * patron.size, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "faseRitmo"
-    )
-    val pulsoActual = fase.toInt().coerceIn(0, patron.size - 1)
-    val dentroDelPulso = fase - fase.toInt()   // 0..1 dentro del pulso
+private fun BarraRitmo(patron: List<String>, bpm: Int, grande: Boolean, pulsoExterno: Int = -1) {
+    val pulsoActual: Int
+    if (pulsoExterno >= 0) {
+        pulsoActual = pulsoExterno.coerceIn(0, patron.size - 1)
+    } else {
+        val msPorPulso = 60_000 / bpm.coerceAtLeast(20)
+        val transicion = rememberInfiniteTransition(label = "ritmo")
+        val fase by transicion.animateFloat(
+            initialValue = 0f,
+            targetValue = patron.size.toFloat(),
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = msPorPulso * patron.size, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "faseRitmo"
+        )
+        pulsoActual = fase.toInt().coerceIn(0, patron.size - 1)
+    }
+
+    // El círculo del metrónomo "late" al entrar cada pulso.
+    val escala = remember { Animatable(1f) }
+    LaunchedEffect(pulsoActual) {
+        escala.snapTo(if (grande) 1.30f else 1.18f)
+        escala.animateTo(1f, tween(240))
+    }
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        // Metrónomo: late al inicio de cada pulso.
-        val escala = 1f + (if (grande) 0.30f else 0.18f) * (1f - dentroDelPulso)
         Box(
             modifier = Modifier
                 .size(if (grande) 64.dp else 44.dp)
-                .scale(escala)
+                .scale(escala.value)
                 .background(FretGold.copy(alpha = 0.18f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
@@ -123,19 +137,27 @@ fun GuiaRitmo(state: LiveState) {
     }
 }
 
-/** RHYTHM en vivo: metrónomo + contador de golpes con flash de acierto. */
+/**
+ * RHYTHM en vivo: metrónomo sincronizado con la validación, contador de
+ * golpes a tiempo y corrección inmediata cuando el golpe cae fuera del
+ * pulso (adelantado / atrasado).
+ */
 @Composable
 fun PasoRitmo(state: LiveState) {
     val patron = state.objetivos.ifEmpty { listOf("↓") }
     val colorGolpes by animateColorAsState(
-        targetValue = if (state.feedback == FeedbackVivo.ACIERTO) VerdeOk else FretGold,
+        targetValue = when (state.feedback) {
+            FeedbackVivo.ACIERTO -> VerdeOk
+            FeedbackVivo.FALLO -> RosaError
+            else -> FretGold
+        },
         label = "golpesColor"
     )
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        BarraRitmo(patron, state.bpm ?: 60, grande = false)
+        BarraRitmo(patron, state.bpm ?: 60, grande = false, pulsoExterno = state.pulsoIdx)
         Spacer(Modifier.height(10.dp))
         Text(
             text = "${state.aciertosPaso} / ${state.esperadosPaso}",
@@ -143,6 +165,17 @@ fun PasoRitmo(state: LiveState) {
             fontWeight = FontWeight.Black,
             fontSize = 44.sp
         )
-        Text("golpes detectados · sigue el pulso", color = FretMuted, fontSize = 13.sp)
+        val (mensaje, colorMensaje) = when (state.timing) {
+            TimingVivo.A_TIEMPO -> "✓ A tiempo" to VerdeOk
+            TimingVivo.ADELANTADO -> "⏪ Vas adelantado: espera el pulso" to RosaError
+            TimingVivo.ATRASADO -> "⏩ Vas atrasado: anticipa el golpe" to RosaError
+            TimingVivo.NINGUNO -> "golpes a tiempo · sigue el pulso" to FretMuted
+        }
+        Text(
+            text = mensaje,
+            color = colorMensaje,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }

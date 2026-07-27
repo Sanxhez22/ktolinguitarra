@@ -460,7 +460,7 @@ private fun SesionEnVivoView(
                                 Spacer(Modifier.height(8.dp))
                             }
                             Text(
-                                text = state.objetivoActual?.let { "🎸 ${state.tipo.replace('_', ' ')}" } ?: "🎸",
+                                text = state.objetivoActual?.let { "🎸 Rasguea $it" } ?: "🎸",
                                 color = FretMuted,
                                 fontSize = 14.sp
                             )
@@ -470,7 +470,20 @@ private fun SesionEnVivoView(
                                 fontWeight = FontWeight.Black,
                                 fontSize = 56.sp
                             )
-                            Text("golpes detectados · sigue el pulso", color = FretMuted, fontSize = 13.sp)
+                            Text(
+                                text = when {
+                                    state.acordeDetectado == null -> "rasgueos correctos · escuchando…"
+                                    state.feedback == FeedbackVivo.FALLO ->
+                                        "suena ${state.acordeDetectado}: revisa los dedos"
+                                    else -> "rasgueos correctos · suena: ${state.acordeDetectado}"
+                                },
+                                color = when (state.feedback) {
+                                    FeedbackVivo.ACIERTO -> Color(0xFF4ADE80)
+                                    FeedbackVivo.FALLO -> Color(0xFFE94584)
+                                    else -> FretMuted
+                                },
+                                fontSize = 13.sp
+                            )
                         }
 
                         state.porPitch -> {

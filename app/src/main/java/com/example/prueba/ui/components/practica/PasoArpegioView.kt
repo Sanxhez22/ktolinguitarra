@@ -30,16 +30,26 @@ import com.example.prueba.viewmodel.LiveState
 @Composable
 fun GuiaArpegio(state: LiveState) {
     val posiciones = remember(state.objetivos) { NotasGuitarra.posicionesDe(state.objetivos) }
+    // Fingerpicking: cada nota lleva su dedo de mano derecha (p-i-m-a).
+    val esFingerstyle = state.skill == "fingerstyle"
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("Las notas del arpegio, en orden", color = FretMuted, fontSize = 13.sp)
+        Text(
+            text = if (esFingerstyle) "El patrón p-i-m-a, en orden" else "Las notas del arpegio, en orden",
+            color = FretMuted,
+            fontSize = 13.sp
+        )
         Spacer(Modifier.height(4.dp))
         Row {
             state.objetivos.forEachIndexed { i, nota ->
+                val etiqueta = if (esFingerstyle) {
+                    val pos = posiciones.getOrNull(i)
+                    if (pos != null) "$nota (${dedoPima(pos.cuerda)})" else nota
+                } else nota
                 Text(
-                    text = if (i == 0) nota else "  →  $nota",
+                    text = if (i == 0) etiqueta else "  →  $etiqueta",
                     color = if (i == 0) FretGold else FretText,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 17.sp
+                    fontSize = 16.sp
                 )
             }
         }
@@ -49,6 +59,7 @@ fun GuiaArpegio(state: LiveState) {
                 NotaDiapason(
                     posicion = pos,
                     estado = if (i == 0) EstadoNota.OBJETIVO else EstadoNota.CONTEXTO,
+                    etiqueta = if (esFingerstyle) dedoPima(pos.cuerda) else null,
                     orden = i + 1
                 )
             },
@@ -56,8 +67,12 @@ fun GuiaArpegio(state: LiveState) {
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            text = "Toca cada nota por separado y deja que suene antes de " +
-                "pasar a la siguiente. Sigue los números.",
+            text = if (esFingerstyle)
+                "p = pulgar · i = índice · m = medio · a = anular.\n" +
+                    "Cada dedo pulsa su cuerda; deja sonar cada nota."
+            else
+                "Toca cada nota por separado y deja que suene antes de " +
+                    "pasar a la siguiente. Sigue los números.",
             color = FretText,
             fontSize = 13.sp,
             lineHeight = 18.sp,
@@ -71,6 +86,7 @@ fun GuiaArpegio(state: LiveState) {
 fun PasoArpegio(state: LiveState) {
     val posiciones = remember(state.objetivos) { NotasGuitarra.posicionesDe(state.objetivos) }
     val actual = state.objetivoIdx.coerceIn(0, (state.objetivos.size - 1).coerceAtLeast(0))
+    val esFingerstyle = state.skill == "fingerstyle"
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -84,6 +100,17 @@ fun PasoArpegio(state: LiveState) {
                 fontSize = 26.sp
             )
         }
+        if (esFingerstyle) {
+            posiciones.getOrNull(actual)?.let { pos ->
+                val dedo = dedoPima(pos.cuerda)
+                Text(
+                    text = "Dedo: $dedo (${nombrePima(dedo)})",
+                    color = FretGold,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
         Spacer(Modifier.height(6.dp))
         FretboardView(
             notas = posiciones.mapIndexed { i, pos ->
@@ -94,6 +121,7 @@ fun PasoArpegio(state: LiveState) {
                         i == actual -> estadoNotaDe(state.feedback)
                         else -> EstadoNota.CONTEXTO
                     },
+                    etiqueta = if (esFingerstyle) dedoPima(pos.cuerda) else null,
                     orden = i + 1
                 )
             },

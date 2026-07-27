@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.prueba.FretMindApp
 import com.example.prueba.api.EjercicioDto
 import com.example.prueba.api.PasoEjercicioDto
+import com.example.prueba.audio.ChordDetector
 import com.example.prueba.audio.LivePracticeEngine
 import com.example.prueba.audio.noteNameToFreq
 import com.example.prueba.data.model.AcordeForma
@@ -31,11 +32,28 @@ import java.util.TimeZone
 /** Tipos de paso que se validan por detección de tono (monofónico, YIN). */
 private val TIPOS_POR_PITCH = setOf("NOTE", "SEQUENCE", "STRING", "SCALE", "ARPEGGIO", "MELODY")
 
+/** Tipos de paso que se validan reconociendo el ACORDE tocado (croma). */
+private val TIPOS_VALIDA_ACORDE = setOf("CHORD", "CHORD_CHANGE")
+
 /** Frames consecutivos con la nota correcta para contar un acierto (~280 ms). */
 private const val FRAMES_SOSTENIDOS = 3
 
-/** Tolerancia en cents para validar una cuerda al aire en pasos STRING. */
-private const val TOLERANCIA_CENTS_STRING = 35.0
+/** Frames consecutivos con el acorde correcto para contar un rasgueo válido. */
+private const val FRAMES_ACORDE = 2
+
+/** Rasgueos correctos que completan un paso CHORD. */
+private const val RASGUEOS_POR_ACORDE = 4
+
+/** Vueltas a la secuencia que completan un paso CHORD_CHANGE. */
+private const val RONDAS_CAMBIO = 2
+
+/**
+ * Tolerancia en cents para validar una cuerda al aire en pasos STRING.
+ * Es el criterio de "cuerda afinada" de la práctica: más estricto que el
+ * viejo 35 (dejaba pasar cuerdas audiblemente desafinadas), más laxo que
+ * los ±5 del afinador (aquí se valida con una sola pasada del mic).
+ */
+private const val TOLERANCIA_CENTS_STRING = 20.0
 
 /** Tipos de paso que muestran la guía visual del acorde antes de detectar. */
 private val TIPOS_ACORDE = setOf("CHORD", "CHORD_CHANGE")
@@ -51,28 +69,37 @@ private const val MS_GUIA_CAMBIO = 9000L
 private const val MS_GUIA_PREVIA = 7000L
 
 /**
+ * Cents de desviación de la frecuencia detectada respecto a la nota objetivo,
+ * IGNORANDO la octava (los armónicos hacen saltar de octava a YIN en algunas
+ * cuerdas al aire). Null si no hay tono o el objetivo no parsea.
+ */
+private fun centsVsObjetivo(freqHz: Float, objetivo: String): Double? {
+    if (freqHz <= 0f) return null
+    val objetivoHz = noteNameToFreq(objetivo) ?: return null
+    val semitonos = 12.0 * ln(freqHz.toDouble() / objetivoHz) / ln(2.0)
+    return (semitonos - (semitonos / 12.0).roundToInt() * 12.0) * 100.0
+}
+
+/**
  * ¿El frame detectado cumple el objetivo del paso?
  *
- * STRING: se compara la frecuencia detectada contra la frecuencia de la
- * nota objetivo con tolerancia en cents e IGNORANDO la octava. El detector
- * YIN salta de octava con los armónicos de algunas cuerdas al aire (la 4ª
- * D3 se lee como D4 y la 1ª E4 como E5), lo que hacía imposible validarlas
- * con igualdad exacta de nota+octava. Como el paso pide una cuerda al aire
- * concreta, la clase de nota afinada es criterio suficiente.
+ * STRING: frecuencia contra la nota objetivo con tolerancia en cents e
+ * ignorando octava — es el paso de AFINACIÓN: la cuerda se da por buena
+ * solo si además de ser la nota correcta está afinada.
  *
- * Resto de tipos por pitch: igualdad exacta nota+octava (sin cambios).
+ * Resto de tipos por pitch: igualdad exacta nota+octava.
  */
 private fun cumpleObjetivo(frame: LivePracticeEngine.LiveFrame, objetivo: String, tipo: String): Boolean {
     if (tipo != "STRING") return frame.nota == objetivo
-    val objetivoHz = noteNameToFreq(objetivo) ?: return frame.nota == objetivo
-    if (frame.freqHz <= 0f) return false
-    val semitonos = 12.0 * ln(frame.freqHz.toDouble() / objetivoHz) / ln(2.0)
-    val cents = (semitonos - (semitonos / 12.0).roundToInt() * 12.0) * 100.0
+    val cents = centsVsObjetivo(frame.freqHz, objetivo) ?: return frame.nota == objetivo
     return abs(cents) <= TOLERANCIA_CENTS_STRING
 }
 
 enum class FaseVivo { PREPARANDO, CUENTA, GUIA, PASO, TRANSICION, FINALIZADO, ERROR }
 enum class FeedbackVivo { NEUTRO, ACIERTO, FALLO }
+
+/** Clasificación temporal de un golpe en pasos de ritmo. */
+enum class TimingVivo { NINGUNO, A_TIEMPO, ADELANTADO, ATRASADO }
 
 data class LiveState(
     val fase: FaseVivo = FaseVivo.PREPARANDO,
@@ -82,6 +109,7 @@ data class LiveState(
     val titulo: String = "",
     val instruccion: String = "",
     val tipo: String = "",
+    val skill: String = "",
     val porPitch: Boolean = true,
     val objetivoActual: String? = null,
     // Datos del paso para las representaciones visuales por tipo.
@@ -89,6 +117,14 @@ data class LiveState(
     val objetivoIdx: Int = 0,
     val bpm: Int? = null,
     val notaDetectada: String? = null,
+    // Acorde reconocido por croma (pasos CHORD/CHORD_CHANGE/SONG_FRAGMENT).
+    val acordeDetectado: String? = null,
+    // Desviación en cents del paso STRING (para el mini-afinador de la vista).
+    val centsDetectados: Float? = null,
+    // Reloj de ritmo del ViewModel (RHYTHM/SONG_FRAGMENT): índice del pulso
+    // dentro del patrón/compás; -1 = sin reloj activo.
+    val pulsoIdx: Int = -1,
+    val timing: TimingVivo = TimingVivo.NINGUNO,
     val feedback: FeedbackVivo = FeedbackVivo.NEUTRO,
     val racha: Int = 0,
     val aciertosPaso: Int = 0,
@@ -150,12 +186,17 @@ class GuidedPracticeViewModel : ViewModel() {
     private var framesJob: kotlinx.coroutines.Job? = null
     private var sesionJob: kotlinx.coroutines.Job? = null
     private var guiaJob: kotlinx.coroutines.Job? = null
+    private var ritmoJob: kotlinx.coroutines.Job? = null
 
     // Estado interno del paso en curso.
     private var objetivoIdx = 0
     private var framesEnObjetivo = 0
     private var framesEnError = 0
+    private var framesEnAcorde = 0
+    private var framesAcordeError = 0
+    private var acordeArmado = true       // exige un ataque nuevo entre rasgueos válidos
     private var ataquesPaso = 0
+    private var inicioRitmoMs = 0L
     private var pasoTerminado = false
     private val resultados = mutableListOf<ResultadoPaso>()
 
@@ -201,8 +242,7 @@ class GuidedPracticeViewModel : ViewModel() {
                 val restantes = s.segundosRestantes - 1
                 _state.value = s.copy(
                     segundosRestantes = restantes.coerceAtLeast(0),
-                    segundosTotal = s.segundosTotal + 1,
-                    progresoPaso = progresoPasoActual(restantes)
+                    segundosTotal = s.segundosTotal + 1
                 )
                 if (restantes <= 0) cerrarPaso()
             }
@@ -211,30 +251,35 @@ class GuidedPracticeViewModel : ViewModel() {
 
     private fun pasoActual(): PasoEjercicioDto = pasos[_state.value.pasoIdx]
 
-    private fun esperadosDe(paso: PasoEjercicioDto): Int =
-        if (paso.tipo in TIPOS_POR_PITCH) {
-            paso.objetivos.size
-        } else {
-            // Actividad: pulsos esperados según bpm (o uno cada 2 s).
+    private fun esperadosDe(paso: PasoEjercicioDto): Int = when {
+        paso.tipo in TIPOS_POR_PITCH -> paso.objetivos.size
+        // CHORD: rasgueos con el acorde correcto sonando.
+        paso.tipo == "CHORD" -> RASGUEOS_POR_ACORDE
+        // CHORD_CHANGE: cada acorde de la secuencia, RONDAS_CAMBIO vueltas.
+        paso.tipo == "CHORD_CHANGE" -> (paso.objetivos.size * RONDAS_CAMBIO).coerceAtLeast(4)
+        else -> {
+            // Actividad rítmica: pulsos esperados según bpm (o uno cada 2 s).
             val porBpm = paso.bpm?.let { paso.duracionSeg * it / 60 }
             (porBpm ?: (paso.duracionSeg / 2)).coerceAtLeast(4)
         }
-
-    private fun progresoPasoActual(restantes: Int): Float {
-        val paso = pasoActual()
-        return if (paso.tipo in TIPOS_POR_PITCH) {
-            if (paso.objetivos.isEmpty()) 0f
-            else objetivoIdx.toFloat() / paso.objetivos.size
-        } else {
-            1f - restantes.toFloat() / paso.duracionSeg.coerceAtLeast(1)
-        }
     }
+
+    private fun progresoDe(paso: PasoEjercicioDto, aciertos: Int): Float =
+        if (paso.tipo in TIPOS_POR_PITCH) {
+            if (paso.objetivos.isEmpty()) 0f else objetivoIdx.toFloat() / paso.objetivos.size
+        } else {
+            val esperados = esperadosDe(paso)
+            if (esperados <= 0) 0f else (aciertos.toFloat() / esperados).coerceAtMost(1f)
+        }
 
     private fun arrancarPaso(idx: Int) {
         val paso = pasos[idx]
         objetivoIdx = 0
         framesEnObjetivo = 0
         framesEnError = 0
+        framesEnAcorde = 0
+        framesAcordeError = 0
+        acordeArmado = true
         ataquesPaso = 0
         pasoTerminado = false
         // Pasos de acorde con forma en el catálogo: primero la guía visual
@@ -255,12 +300,17 @@ class GuidedPracticeViewModel : ViewModel() {
             titulo = paso.titulo,
             instruccion = paso.instruccion,
             tipo = paso.tipo,
+            skill = paso.skill,
             porPitch = paso.tipo in TIPOS_POR_PITCH,
             objetivoActual = paso.objetivos.firstOrNull(),
             objetivos = paso.objetivos,
             objetivoIdx = 0,
             bpm = paso.bpm,
             notaDetectada = null,
+            acordeDetectado = null,
+            centsDetectados = null,
+            pulsoIdx = -1,
+            timing = TimingVivo.NINGUNO,
             feedback = FeedbackVivo.NEUTRO,
             aciertosPaso = 0,
             esperadosPaso = esperadosDe(paso),
@@ -272,6 +322,8 @@ class GuidedPracticeViewModel : ViewModel() {
             lanzarGuia(formasGuia, paso.tipo)
         } else if (conGuia) {
             lanzarGuiaPrevia()
+        } else {
+            alEntrarEnPaso()
         }
     }
 
@@ -339,6 +391,54 @@ class GuidedPracticeViewModel : ViewModel() {
             guiaPasoIdx = Int.MAX_VALUE,
             guiaTexto = ""
         )
+        alEntrarEnPaso()
+    }
+
+    /**
+     * Arranca el reloj de ritmo del paso si el tipo lo necesita. RHYTHM y
+     * SONG_FRAGMENT dejan de depender de animaciones sueltas de la UI: el
+     * pulso vive aquí, la validación de golpes usa EL MISMO reloj y la vista
+     * solo pinta [LiveState.pulsoIdx] / [LiveState.objetivoIdx].
+     */
+    private fun alEntrarEnPaso() {
+        val paso = pasoActual()
+        ritmoJob?.cancel()
+        ritmoJob = null
+        val bpm = paso.bpm ?: 60
+        val msPorPulso = 60_000L / bpm.coerceAtLeast(20)
+        when (paso.tipo) {
+            "RHYTHM" -> {
+                val patron = paso.objetivos.size.coerceAtLeast(1)
+                inicioRitmoMs = System.currentTimeMillis()
+                ritmoJob = viewModelScope.launch {
+                    while (true) {
+                        // El pulso se deriva SIEMPRE del reloj real (no de
+                        // delays acumulados): cero deriva contra la validación.
+                        val t = System.currentTimeMillis() - inicioRitmoMs
+                        val pulso = (t / msPorPulso).toInt()
+                        _state.value = _state.value.copy(pulsoIdx = pulso % patron)
+                        delay(msPorPulso - (t % msPorPulso))
+                    }
+                }
+            }
+            "SONG_FRAGMENT" -> {
+                val compases = paso.objetivos.size.coerceAtLeast(1)
+                inicioRitmoMs = System.currentTimeMillis()
+                ritmoJob = viewModelScope.launch {
+                    while (true) {
+                        val t = System.currentTimeMillis() - inicioRitmoMs
+                        val pulso = (t / msPorPulso).toInt()
+                        val compas = (pulso / 4) % compases
+                        _state.value = _state.value.copy(
+                            pulsoIdx = pulso % 4,
+                            objetivoIdx = compas,
+                            objetivoActual = paso.objetivos.getOrNull(compas)
+                        )
+                        delay(msPorPulso - (t % msPorPulso))
+                    }
+                }
+            }
+        }
     }
 
     private fun procesarFrame(frame: LivePracticeEngine.LiveFrame) {
@@ -346,60 +446,197 @@ class GuidedPracticeViewModel : ViewModel() {
         if (s.fase != FaseVivo.PASO || pasoTerminado) return
         val paso = pasoActual()
 
-        if (paso.tipo in TIPOS_POR_PITCH) {
-            val objetivo = paso.objetivos.getOrNull(objetivoIdx) ?: return
-            val nota = frame.nota
-            if (nota == null) {
+        when {
+            paso.tipo in TIPOS_POR_PITCH -> procesarPitch(frame, s, paso)
+            paso.tipo in TIPOS_VALIDA_ACORDE -> procesarAcorde(frame, s, paso)
+            paso.tipo == "RHYTHM" -> procesarRitmo(frame, s, paso)
+            else -> procesarActividad(frame, s)
+        }
+    }
+
+    /** NOTE/SEQUENCE/STRING/SCALE/ARPEGGIO/MELODY: nota a nota con YIN. */
+    private fun procesarPitch(
+        frame: LivePracticeEngine.LiveFrame,
+        s: LiveState,
+        paso: PasoEjercicioDto
+    ) {
+        val objetivo = paso.objetivos.getOrNull(objetivoIdx) ?: return
+        // STRING es el paso de afinación: publica los cents para que la
+        // vista muestre el mini-afinador aunque aún no haya acierto.
+        val cents = if (paso.tipo == "STRING") centsVsObjetivo(frame.freqHz, objetivo) else null
+
+        val nota = frame.nota
+        if (nota == null) {
+            framesEnObjetivo = 0
+            if (cents != null) _state.value = s.copy(centsDetectados = null)
+            return
+        }
+        if (cumpleObjetivo(frame, objetivo, paso.tipo)) {
+            framesEnObjetivo++
+            framesEnError = 0
+            if (framesEnObjetivo >= FRAMES_SOSTENIDOS) {
+                // Acierto: avanza al siguiente objetivo de la secuencia.
                 framesEnObjetivo = 0
-                return
-            }
-            if (cumpleObjetivo(frame, objetivo, paso.tipo)) {
-                framesEnObjetivo++
-                framesEnError = 0
-                if (framesEnObjetivo >= FRAMES_SOSTENIDOS) {
-                    // Acierto: avanza al siguiente objetivo de la secuencia.
-                    framesEnObjetivo = 0
-                    objetivoIdx++
-                    val aciertos = s.aciertosPaso + 1
-                    _state.value = s.copy(
-                        aciertosPaso = aciertos,
-                        racha = s.racha + 1,
-                        feedback = FeedbackVivo.ACIERTO,
-                        notaDetectada = nota,
-                        objetivoActual = paso.objetivos.getOrNull(objetivoIdx),
-                        objetivoIdx = objetivoIdx,
-                        progresoPaso = objetivoIdx.toFloat() / paso.objetivos.size,
-                        puntuacionViva = puntuacionViva(aciertos)
-                    )
-                    if (objetivoIdx >= paso.objetivos.size) cerrarPaso()
-                }
-            } else {
-                framesEnObjetivo = 0
-                framesEnError++
-                // Nota equivocada sostenida: feedback de fallo (sin castigar doble).
-                if (framesEnError == FRAMES_SOSTENIDOS) {
-                    _state.value = s.copy(
-                        feedback = FeedbackVivo.FALLO,
-                        notaDetectada = nota,
-                        racha = 0
-                    )
-                }
-            }
-        } else {
-            // Validación por actividad: cuenta ataques (rasgueos/golpes).
-            if (frame.ataque) {
-                ataquesPaso++
-                val esperados = s.esperadosPaso
-                val aciertos = ataquesPaso.coerceAtMost(esperados)
+                objetivoIdx++
+                val aciertos = s.aciertosPaso + 1
                 _state.value = s.copy(
                     aciertosPaso = aciertos,
                     racha = s.racha + 1,
                     feedback = FeedbackVivo.ACIERTO,
-                    notaDetectada = frame.nota,
+                    notaDetectada = nota,
+                    centsDetectados = cents?.toFloat(),
+                    objetivoActual = paso.objetivos.getOrNull(objetivoIdx),
+                    objetivoIdx = objetivoIdx,
+                    progresoPaso = objetivoIdx.toFloat() / paso.objetivos.size,
                     puntuacionViva = puntuacionViva(aciertos)
                 )
+                if (objetivoIdx >= paso.objetivos.size) cerrarPaso()
+            } else if (cents != null) {
+                _state.value = s.copy(centsDetectados = cents.toFloat(), notaDetectada = nota)
+            }
+        } else {
+            framesEnObjetivo = 0
+            framesEnError++
+            // Nota equivocada sostenida: feedback de fallo (sin castigar doble).
+            if (framesEnError == FRAMES_SOSTENIDOS) {
+                _state.value = s.copy(
+                    feedback = FeedbackVivo.FALLO,
+                    notaDetectada = nota,
+                    centsDetectados = cents?.toFloat(),
+                    racha = 0
+                )
+            } else if (cents != null) {
+                _state.value = s.copy(centsDetectados = cents.toFloat(), notaDetectada = nota)
             }
         }
+    }
+
+    /**
+     * CHORD/CHORD_CHANGE: reconocimiento REAL del acorde por croma.
+     * Un acierto = el acorde objetivo sonando claro tras un rasgueo; entre
+     * aciertos se exige un ataque nuevo (sostener el acorde no suma doble).
+     * En CHORD_CHANGE el objetivo va rotando por la secuencia.
+     */
+    private fun procesarAcorde(
+        frame: LivePracticeEngine.LiveFrame,
+        s: LiveState,
+        paso: PasoEjercicioDto
+    ) {
+        val objetivos = paso.objetivos.ifEmpty { return }
+        val objetivoCrudo = objetivos[objetivoIdx % objetivos.size]
+        val objetivo = ChordDetector.normalizarObjetivo(objetivoCrudo) ?: objetivoCrudo
+
+        if (frame.ataque) acordeArmado = true
+
+        val acorde = frame.acorde
+        if (acorde == null) {
+            framesEnAcorde = 0
+            framesAcordeError = 0
+            return
+        }
+
+        if (acorde == objetivo) {
+            framesEnAcorde++
+            framesAcordeError = 0
+            if (framesEnAcorde >= FRAMES_ACORDE && acordeArmado) {
+                framesEnAcorde = 0
+                acordeArmado = false
+                objetivoIdx++
+                val aciertos = s.aciertosPaso + 1
+                val esperados = s.esperadosPaso
+                _state.value = s.copy(
+                    aciertosPaso = aciertos,
+                    racha = s.racha + 1,
+                    feedback = FeedbackVivo.ACIERTO,
+                    acordeDetectado = acorde,
+                    notaDetectada = null,
+                    objetivoActual = objetivos[objetivoIdx % objetivos.size],
+                    objetivoIdx = objetivoIdx,
+                    progresoPaso = progresoDe(paso, aciertos),
+                    puntuacionViva = puntuacionViva(aciertos)
+                )
+                if (aciertos >= esperados) cerrarPaso()
+            } else {
+                _state.value = s.copy(acordeDetectado = acorde)
+            }
+        } else {
+            framesEnAcorde = 0
+            framesAcordeError++
+            if (framesAcordeError == FRAMES_ACORDE + 1) {
+                _state.value = s.copy(
+                    feedback = FeedbackVivo.FALLO,
+                    acordeDetectado = acorde,
+                    racha = 0
+                )
+            } else {
+                _state.value = s.copy(acordeDetectado = acorde)
+            }
+        }
+    }
+
+    /**
+     * RHYTHM: cada ataque se compara contra el reloj de pulsos del paso.
+     * A tiempo suma; adelantado/atrasado se marca como tal (el usuario ve
+     * hacia dónde corregir) sin sumar el golpe.
+     */
+    private fun procesarRitmo(
+        frame: LivePracticeEngine.LiveFrame,
+        s: LiveState,
+        paso: PasoEjercicioDto
+    ) {
+        if (!frame.ataque) return
+        val bpm = (paso.bpm ?: 60).coerceAtLeast(20)
+        val msPorPulso = 60_000.0 / bpm
+        val t = (System.currentTimeMillis() - inicioRitmoMs).toDouble()
+        val fase = t % msPorPulso
+        // Distancia con signo al pulso más cercano: + atrasado, - adelantado.
+        val dt = if (fase <= msPorPulso / 2) fase else fase - msPorPulso
+        // La ventana de análisis (~93 ms) impone un piso a la tolerancia.
+        val tolerancia = (msPorPulso * 0.25).coerceIn(140.0, 260.0)
+
+        if (abs(dt) <= tolerancia) {
+            val aciertos = (s.aciertosPaso + 1).coerceAtMost(s.esperadosPaso)
+            _state.value = s.copy(
+                aciertosPaso = aciertos,
+                racha = s.racha + 1,
+                feedback = FeedbackVivo.ACIERTO,
+                timing = TimingVivo.A_TIEMPO,
+                notaDetectada = frame.nota,
+                progresoPaso = progresoDe(paso, aciertos),
+                puntuacionViva = puntuacionViva(aciertos)
+            )
+            if (aciertos >= s.esperadosPaso) cerrarPaso()
+        } else {
+            _state.value = s.copy(
+                feedback = FeedbackVivo.FALLO,
+                timing = if (dt < 0) TimingVivo.ADELANTADO else TimingVivo.ATRASADO,
+                racha = 0
+            )
+        }
+    }
+
+    /** SONG_FRAGMENT/CUSTOM: cuenta ataques y muestra el acorde reconocido. */
+    private fun procesarActividad(frame: LivePracticeEngine.LiveFrame, s: LiveState) {
+        val acorde = frame.acorde
+        if (!frame.ataque) {
+            if (acorde != null && acorde != s.acordeDetectado) {
+                _state.value = s.copy(acordeDetectado = acorde)
+            }
+            return
+        }
+        ataquesPaso++
+        val esperados = s.esperadosPaso
+        val aciertos = ataquesPaso.coerceAtMost(esperados)
+        _state.value = s.copy(
+            aciertosPaso = aciertos,
+            racha = s.racha + 1,
+            feedback = FeedbackVivo.ACIERTO,
+            notaDetectada = frame.nota,
+            acordeDetectado = acorde ?: s.acordeDetectado,
+            progresoPaso = progresoDe(pasoActual(), aciertos),
+            puntuacionViva = puntuacionViva(aciertos)
+        )
+        if (aciertos >= esperados) cerrarPaso()
     }
 
     private fun puntuacionViva(aciertosActuales: Int): Int {
@@ -425,13 +662,17 @@ class GuidedPracticeViewModel : ViewModel() {
     private fun cerrarPaso() {
         if (pasoTerminado) return
         pasoTerminado = true
+        ritmoJob?.cancel()
+        ritmoJob = null
         val s = _state.value
         val paso = pasoActual()
         val esperados = s.esperadosPaso
-        val completado = if (paso.tipo in TIPOS_POR_PITCH) {
-            s.aciertosPaso >= paso.objetivos.size
-        } else {
-            esperados > 0 && s.aciertosPaso.toDouble() / esperados >= 0.5
+        val completado = when {
+            paso.tipo in TIPOS_POR_PITCH -> s.aciertosPaso >= paso.objetivos.size
+            // Acordes: reconocimiento real -> exige al menos 3/4 del objetivo.
+            paso.tipo in TIPOS_VALIDA_ACORDE ->
+                esperados > 0 && s.aciertosPaso.toDouble() / esperados >= 0.75
+            else -> esperados > 0 && s.aciertosPaso.toDouble() / esperados >= 0.5
         }
         resultados.add(ResultadoPaso(paso, s.aciertosPaso, esperados, completado))
 
@@ -497,15 +738,20 @@ class GuidedPracticeViewModel : ViewModel() {
         framesJob?.cancel()
         sesionJob?.cancel()
         guiaJob?.cancel()
+        ritmoJob?.cancel()
         framesJob = null
         sesionJob = null
         guiaJob = null
+        ritmoJob = null
         engine?.discard()
         engine = null
         resultados.clear()
         objetivoIdx = 0
         framesEnObjetivo = 0
         framesEnError = 0
+        framesEnAcorde = 0
+        framesAcordeError = 0
+        acordeArmado = true
         ataquesPaso = 0
         pasoTerminado = false
         _resultado.value = null

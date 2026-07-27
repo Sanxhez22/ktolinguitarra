@@ -71,24 +71,16 @@ fun GuiaFragmentoCancion(state: LiveState) {
     }
 }
 
-/** SONG_FRAGMENT en vivo: el acorde del compás actual se enciende al tempo. */
+/**
+ * SONG_FRAGMENT en vivo: el compás activo lo marca el reloj del motor de
+ * práctica (el mismo contra el que se cuentan los golpes), y se muestra el
+ * acorde que realmente está sonando.
+ */
 @Composable
 fun PasoFragmentoCancion(state: LiveState) {
-    val bpm = state.bpm ?: 60
-    val msPorCompas = 4 * 60_000 / bpm.coerceAtLeast(20)
     val n = state.objetivos.size.coerceAtLeast(1)
-    val transicion = rememberInfiniteTransition(label = "fragmento")
-    val fase by transicion.animateFloat(
-        initialValue = 0f,
-        targetValue = n.toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = msPorCompas * n, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "faseFragmento"
-    )
-    val activo = fase.toInt().coerceIn(0, n - 1)
-    val pulso = ((fase - fase.toInt()) * 4).toInt() + 1   // 1..4 dentro del compás
+    val activo = state.objetivoIdx.coerceIn(0, n - 1)
+    val pulso = (state.pulsoIdx.coerceAtLeast(0)) + 1   // 1..4 dentro del compás
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -121,7 +113,8 @@ fun PasoFragmentoCancion(state: LiveState) {
         LineaAcordes(state.objetivos, activo)
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "${state.aciertosPaso} / ${state.esperadosPaso} golpes · sigue el pulso",
+            text = "${state.aciertosPaso} / ${state.esperadosPaso} golpes · " +
+                (state.acordeDetectado?.let { "suena: $it" } ?: "sigue el pulso"),
             color = FretMuted,
             fontSize = 13.sp
         )
