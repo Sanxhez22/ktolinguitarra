@@ -705,7 +705,15 @@ fun ResultadoView(
     onNueva: () -> Unit,
     onFinalizar: (() -> Unit)? = null
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    // El resumen crece con las tarjetas de estrellas y de resultado adaptativo,
+    // así que no cabe en pantalla: sin scroll el feedback de RIFF y los botones
+    // quedan recortados abajo.
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = FretGold.copy(alpha = 0.15f)),
