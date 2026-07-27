@@ -30,16 +30,21 @@ class LivePracticeEngine(
 ) {
     /**
      * Lectura de una ventana de análisis (~93 ms a 44.1 kHz):
-     * @param freqHz   frecuencia fundamental detectada (-1 si no hay tono)
-     * @param nota     nombre de la nota con octava ("A2") o null
-     * @param rms      energía de la ventana (0..1)
-     * @param ataque   true si esta ventana contiene un ataque (golpe/rasgueo)
+     * @param freqHz      frecuencia fundamental detectada (-1 si no hay tono)
+     * @param nota        nombre de la nota con octava ("A2") o null
+     * @param rms         energía de la ventana (0..1)
+     * @param ataque      true si esta ventana contiene un ataque (golpe/rasgueo)
+     * @param acorde      acorde detectado por croma ("Am") o null si la
+     *                    ventana no suena a acorde claro
+     * @param acordeScore similitud 0..1 del acorde detectado
      */
     data class LiveFrame(
         val freqHz: Float,
         val nota: String?,
         val rms: Float,
-        val ataque: Boolean
+        val ataque: Boolean,
+        val acorde: String? = null,
+        val acordeScore: Float = 0f
     )
 
     @Volatile private var running = false
@@ -78,6 +83,7 @@ class LivePracticeEngine(
 
         worker = thread(name = "LivePracticeEngine") {
             val detector = YinPitchDetector(sampleRate.toFloat(), chunkSize)
+            val acordes = ChordDetector(sampleRate.toFloat(), chunkSize)
             var rmsAnterior = 0f
             var muestrasDesdeAtaque = Long.MAX_VALUE / 2
             val gapMinAtaque = (sampleRate * 0.18f).toLong() // 180 ms entre ataques
@@ -112,12 +118,15 @@ class LivePracticeEngine(
                 rmsAnterior = rms
 
                 val freq = detector.detect(buffer, read)
+                val acorde = acordes.detectar(buffer, read)
                 onFrame(
                     LiveFrame(
                         freqHz = freq,
                         nota = if (freq > 0f) freqToNoteName(freq) else null,
                         rms = rms,
-                        ataque = esAtaque
+                        ataque = esAtaque,
+                        acorde = acorde?.acorde,
+                        acordeScore = acorde?.score ?: 0f
                     )
                 )
             }
