@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.prueba.audio.PitchStabilizer
 import com.example.prueba.audio.TunerEngine
 import com.example.prueba.ui.theme.FretBlack
 import com.example.prueba.ui.theme.FretGold
@@ -380,8 +381,10 @@ private fun OnboardingTunerStep(
     var afinadas by remember { mutableStateOf(setOf<String>()) }
     var enTonoConsecutivos by remember { mutableIntStateOf(0) }
 
+    val stabilizer = remember { PitchStabilizer() }
     val engine = remember {
-        TunerEngine(onPitch = { freq ->
+        TunerEngine(onReading = { lectura ->
+            val freq = stabilizer.procesar(lectura)
             if (freq > 0f) {
                 val cuerda = nearestString(freq)
                 val (nombreNota, octava, _) = frequencyToNote(freq)
