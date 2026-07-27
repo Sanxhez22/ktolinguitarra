@@ -27,6 +27,9 @@ import kotlinx.coroutines.launch
 /** Ruta concreta de detalle para un songId dado. */
 fun songDetailRoute(songId: Long) = "songDetail/$songId"
 
+/** Ruta de la práctica guiada de una canción. */
+fun songPracticeRoute(songId: Long) = "songPractice/$songId"
+
 val NavDark = Color(0xFF15192A)
 val NavSelected = Color(0xFFD49A2A)
 val NavUnselected = Color(0xFFB8B8B8)
@@ -252,9 +255,21 @@ fun AppNav() {
                     SongDetailScreen(
                         songId = songId,
                         onBack = { navController.popBackStack() },
-                        onPracticar = { ejercicioId, cancion ->
-                            navController.navigate("practice?ej=$ejercicioId&song=$cancion")
+                        // "Comenzar práctica" abre la práctica guiada de la
+                        // canción (letra + acordes + reconocimiento).
+                        onPracticar = { _, cancion ->
+                            navController.navigate(songPracticeRoute(cancion))
                         }
+                    )
+                }
+                composable(
+                    route = "songPractice/{songId}",
+                    arguments = listOf(navArgument("songId") { type = NavType.LongType })
+                ) { backStackEntry ->
+                    val songId = backStackEntry.arguments?.getLong("songId") ?: 0L
+                    SongPracticeScreen(
+                        songId = songId,
+                        onBack = { navController.popBackStack() }
                     )
                 }
             }

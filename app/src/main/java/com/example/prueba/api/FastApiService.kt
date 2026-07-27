@@ -148,6 +148,12 @@ interface FastApiService {
     @GET("/canciones/{songId}")
     suspend fun cancionDetalle(@Path("songId") songId: Long): Response<CancionDetalleDto>
 
+    @GET("/canciones/{songId}/practica_guiada")
+    suspend fun cancionPracticaGuiada(
+        @Path("songId") songId: Long,
+        @Query("user_id") userId: String
+    ): Response<PracticaGuiadaCancionDto>
+
     @GET("/canciones/{songId}/plan")
     suspend fun cancionPlan(
         @Path("songId") songId: Long,

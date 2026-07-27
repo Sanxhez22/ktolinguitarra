@@ -7,6 +7,7 @@ import com.example.prueba.api.BibliotecaUpdateRequest
 import com.example.prueba.api.BusquedaCancionesResponse
 import com.example.prueba.api.CancionDetalleDto
 import com.example.prueba.api.PlanCancionDto
+import com.example.prueba.api.PracticaGuiadaCancionDto
 import retrofit2.Response
 
 /**
@@ -35,6 +36,11 @@ class SongRepository {
 
     suspend fun practicar(songId: Long, userId: String): Result<PlanCancionDto> =
         runCatching { api.cancionPracticar(songId, userId).orThrow("Error al iniciar la práctica") }
+
+    suspend fun practicaGuiada(songId: Long, userId: String): Result<PracticaGuiadaCancionDto> =
+        runCatching {
+            api.cancionPracticaGuiada(songId, userId).orThrow("Error al cargar la práctica guiada")
+        }
 
     suspend fun biblioteca(userId: String, tipo: String? = null): Result<BibliotecaResponse> =
         runCatching { api.biblioteca(userId, tipo).orThrow("Error al cargar la biblioteca") }

@@ -575,3 +575,30 @@ data class PlanCancionDto(
     val consejo: String = "",
     val duracionSugeridaMin: Int = 15
 )
+
+// --- Práctica guiada de canción (GET /canciones/{id}/practica_guiada) ---
+
+// Una línea de la canción: texto (vacío en modo solo-acordes), tiempo de
+// entrada en segundos y el acorde de práctica que suena encima.
+data class LineaCancionDto(
+    val texto: String = "",
+    val tSeg: Double? = null,
+    val acorde: String? = null
+)
+
+data class SeccionCancionDto(
+    val nombre: String = "",
+    val lineas: List<LineaCancionDto> = emptyList()
+)
+
+data class PracticaGuiadaCancionDto(
+    val cancion: CancionMiniDto,
+    val tieneLetra: Boolean = false,
+    val sincronizada: Boolean = false,
+    val bpm: Int = 60,
+    val progresion: List<String> = emptyList(),
+    val secciones: List<SeccionCancionDto> = emptyList(),
+    val consejo: String = "",
+    val ejercicioId: String = "primera_cancion",
+    val nota: String = ""
+)
