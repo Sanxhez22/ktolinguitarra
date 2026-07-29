@@ -226,9 +226,17 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
                     contentColor = FretBlack
                 ),
                 shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.size(48.dp)
+                modifier = Modifier.size(48.dp),
+                // Sin esto el padding por defecto (24dp por lado) no deja
+                // sitio al ícono dentro de un botón de 48dp y la flecha
+                // no se dibuja.
+                contentPadding = PaddingValues(0.dp)
             ) {
-                Icon(Icons.Default.Send, contentDescription = "Enviar")
+                Icon(
+                    Icons.Default.Send,
+                    contentDescription = "Enviar",
+                    modifier = Modifier.size(22.dp)
+                )
             }
         }
     }
