@@ -82,7 +82,7 @@ class LivePracticeEngine(
         rec.startRecording()
 
         worker = thread(name = "LivePracticeEngine") {
-            val detector = YinPitchDetector(sampleRate.toFloat(), chunkSize)
+            val detector = MpmPitchDetector(sampleRate.toFloat(), chunkSize)
             val acordes = ChordDetector(sampleRate.toFloat(), chunkSize)
             var rmsAnterior = 0f
             var muestrasDesdeAtaque = Long.MAX_VALUE / 2
