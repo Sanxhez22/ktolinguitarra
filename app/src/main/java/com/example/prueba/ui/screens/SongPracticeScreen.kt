@@ -61,6 +61,22 @@ fun SongPracticeScreen(
     val state by viewModel.state.collectAsState()
     LaunchedEffect(songId) { viewModel.cargar(songId) }
 
+    // Al salir de composición con la práctica sonando (cambio de pestaña,
+    // navegación) se suelta el micrófono y se detiene el reloj: la entrada
+    // guardada del nav mantiene vivo el ViewModel y sin esto la captura
+    // seguía corriendo en segundo plano.
+    DisposableEffect(Unit) {
+        onDispose { viewModel.cancelar() }
+    }
+
+    // Sesión de canción activa: la pantalla no se bloquea mientras el
+    // usuario toca; fuera de la sesión, comportamiento normal del sistema.
+    if (state.fase == FaseCancion.CUENTA || state.fase == FaseCancion.TOCANDO ||
+        state.fase == FaseCancion.PAUSA
+    ) {
+        com.example.prueba.ui.components.MantenerPantallaEncendida()
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()

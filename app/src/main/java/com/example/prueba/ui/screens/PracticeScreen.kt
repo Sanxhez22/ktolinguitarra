@@ -129,6 +129,15 @@ fun PracticeScreen(
         activo = false
     }
 
+    // Con una sesión de práctica activa (guiada, en vivo o cronómetro) el
+    // usuario está tocando la guitarra: la pantalla no debe bloquearse.
+    // En selección/resultados vuelve el comportamiento normal del sistema.
+    if (fase == FasePractica.EN_VIVO || fase == FasePractica.GUIADO ||
+        fase == FasePractica.CRONOMETRO
+    ) {
+        com.example.prueba.ui.components.MantenerPantallaEncendida()
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()

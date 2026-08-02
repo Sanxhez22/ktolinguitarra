@@ -103,6 +103,10 @@ private const val LECTURAS_PARA_PERDER = 3
 fun TunerScreen() {
     val context = LocalContext.current
 
+    // Afinar toma minutos sin tocar el teléfono: la pantalla no debe
+    // bloquearse mientras el afinador está abierto.
+    com.example.prueba.ui.components.MantenerPantallaEncendida()
+
     // ---- Estado de la detección (lo escribe el hilo de audio) ----
     var freqEstable by remember { mutableStateOf(-1f) }
     var cuerdaAuto by remember { mutableStateOf<Cuerda?>(null) }
