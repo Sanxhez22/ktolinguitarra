@@ -126,14 +126,23 @@ class ChordDetector(
             return v
         }
 
+        private val BEMOL_A_SOSTENIDO = mapOf(
+            "Ab" to "G#", "Bb" to "A#", "Cb" to "B", "Db" to "C#",
+            "Eb" to "D#", "Fb" to "E", "Gb" to "F#"
+        )
+
         /**
-         * Normaliza el objetivo de un paso al vocabulario del detector:
-         * "Am"->"Am", "A7"->"A" (la séptima matchea contra su tríada),
-         * "Bm7"->"Bm". Null si no parsea como acorde.
+         * Normaliza el objetivo de un paso al vocabulario del detector
+         * (tríadas mayores/menores): "Am"->"Am", "A7"->"A", "Bm7"->"Bm",
+         * "Em7"->"Em", "Bb"->"A#" (bemoles a sostenidos), "Cmaj7"->"C"
+         * (maj NO es menor), "D/F#"->"D" (el bajo no cambia la tríada).
+         * Null si no parsea como acorde.
          */
         fun normalizarObjetivo(objetivo: String): String? {
-            val m = Regex("^([A-G]#?)(m?)").find(objetivo.trim()) ?: return null
-            val (raiz, menor) = m.destructured
+            val m = Regex("^([A-G][#b]?)(m(?![a]j))?").find(objetivo.trim()) ?: return null
+            val raizCruda = m.groupValues[1]
+            val menor = m.groupValues[2]
+            val raiz = BEMOL_A_SOSTENIDO[raizCruda] ?: raizCruda
             if (raiz !in NOMBRES) return null
             return raiz + menor
         }

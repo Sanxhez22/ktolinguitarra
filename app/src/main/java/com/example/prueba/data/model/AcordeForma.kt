@@ -223,6 +223,17 @@ object CatalogoAcordes {
     /** Busca la forma por nombre exacto ("Am", "G7"...); null si no está. */
     fun buscar(nombre: String): AcordeForma? = formas[nombre.trim()]
 
+    /**
+     * Busca la forma didáctica más cercana: primero el nombre exacto y, si
+     * el acorde trae extensiones ("Em7", "Cadd9", "D/F#"), la tríada base
+     * normalizada — la misma contra la que valida el detector de acordes.
+     * Null si tampoco hay forma para la tríada (no se inventan diagramas).
+     */
+    fun buscarCercana(nombre: String): AcordeForma? =
+        buscar(nombre)
+            ?: com.example.prueba.audio.ChordDetector.normalizarObjetivo(nombre)
+                ?.let { buscar(it) }
+
     /** Nombres disponibles (para una futura biblioteca de acordes). */
     fun nombres(): List<String> = formas.keys.toList()
 }

@@ -593,6 +593,9 @@ data class SeccionCancionDto(
 
 data class PracticaGuiadaCancionDto(
     val cancion: CancionMiniDto,
+    // false = la canción no tiene hoja de acordes en la fuente: la práctica
+    // no está disponible y `nota` trae el mensaje honesto para el usuario.
+    val disponible: Boolean = true,
     val tieneLetra: Boolean = false,
     val sincronizada: Boolean = false,
     val bpm: Int = 60,

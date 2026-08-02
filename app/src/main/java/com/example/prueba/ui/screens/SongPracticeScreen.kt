@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -202,11 +203,16 @@ private fun PortadaCancionView(
             }
         }
 
-        // Progresión de práctica con sus diagramas.
+        // Progresión de práctica con sus diagramas. Con acordes reales la
+        // progresión puede traer más de 4 formas: la fila se desplaza en
+        // horizontal para no recortar ninguna.
         Text("Acordes de la práctica", color = FretMuted, fontSize = 12.sp)
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             state.progresion.forEach { nombre ->
-                val forma = remember(nombre) { CatalogoAcordes.buscar(nombre) }
+                val forma = remember(nombre) { CatalogoAcordes.buscarCercana(nombre) }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     if (forma != null) {
                         DiagramaAcorde(forma = forma, modifier = Modifier.width(76.dp), compacto = true)
@@ -326,7 +332,7 @@ private fun CancionEnVivoView(
                 val acordeActual = lineaActual?.acorde
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Ahora", color = FretMuted, fontSize = 11.sp)
-                    val forma = acordeActual?.let { CatalogoAcordes.buscar(it) }
+                    val forma = acordeActual?.let { CatalogoAcordes.buscarCercana(it) }
                     if (forma != null) {
                         DiagramaAcorde(forma = forma, modifier = Modifier.width(92.dp), compacto = true)
                     } else {
@@ -340,7 +346,7 @@ private fun CancionEnVivoView(
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Sigue", color = FretMuted, fontSize = 11.sp)
-                    val formaSig = siguienteAcorde?.let { CatalogoAcordes.buscar(it) }
+                    val formaSig = siguienteAcorde?.let { CatalogoAcordes.buscarCercana(it) }
                     if (formaSig != null) {
                         DiagramaAcorde(forma = formaSig, modifier = Modifier.width(64.dp), compacto = true)
                     } else {

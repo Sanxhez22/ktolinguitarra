@@ -113,6 +113,17 @@ class SongPracticeViewModel : ViewModel() {
             }
             songRepository.practicaGuiada(songId, session.id)
                 .onSuccess { dto ->
+                    // Sin hoja de acordes real no hay práctica: mensaje
+                    // honesto en vez de una progresión inventada.
+                    if (!dto.disponible) {
+                        _state.value = SongPracticeState(
+                            fase = FaseCancion.ERROR,
+                            error = dto.nota.ifBlank {
+                                "Esta canción aún no tiene sus acordes disponibles."
+                            }
+                        )
+                        return@onSuccess
+                    }
                     contenido = dto
                     cargado = true
                     val lineas = aplanar(dto)
