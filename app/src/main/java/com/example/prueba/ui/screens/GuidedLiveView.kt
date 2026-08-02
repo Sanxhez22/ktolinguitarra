@@ -13,6 +13,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -74,6 +75,16 @@ fun GuidedLiveView(
 
     LaunchedEffect(ejercicio.id) { liveViewModel.iniciar(ejercicio) }
     LaunchedEffect(resultado) { resultado?.let { onFinalizado(it) } }
+
+    // Si la vista sale de composición con la sesión a medias (cambio de
+    // pestaña del bottom bar, navegación), hay que soltar el micrófono:
+    // con la entrada del nav guardada el ViewModel sigue vivo y sin esto
+    // la captura de audio quedaba corriendo en segundo plano.
+    DisposableEffect(Unit) {
+        onDispose {
+            if (liveViewModel.resultado.value == null) liveViewModel.cancelar()
+        }
+    }
 
     when (state.fase) {
         FaseVivo.PREPARANDO, FaseVivo.CUENTA -> CuentaRegresivaView(state.cuenta, state.fase)

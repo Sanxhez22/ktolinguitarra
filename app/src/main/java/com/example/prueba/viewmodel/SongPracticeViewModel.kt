@@ -177,6 +177,7 @@ class SongPracticeViewModel : ViewModel() {
         if (s.fase != FaseCancion.LISTA && s.fase != FaseCancion.FINALIZADA) return
         if (s.lineas.isEmpty()) return
 
+        framesEnAcorde = 0
         _state.value = s.copy(
             fase = FaseCancion.CUENTA,
             cuenta = 3,

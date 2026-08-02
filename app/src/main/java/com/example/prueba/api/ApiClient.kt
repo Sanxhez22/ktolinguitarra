@@ -15,8 +15,11 @@ object  ApiClient {
         .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
         .create()
 
+    // BASIC: método, URL y código de respuesta. BODY volcaba TODOS los
+    // cuerpos al log (incluidos los WAV multipart de práctica): ruido
+    // enorme en logcat y trabajo extra en cada request.
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.BODY
+        level = HttpLoggingInterceptor.Level.BASIC
     }
 
     private val okHttpClient: OkHttpClient by lazy {
