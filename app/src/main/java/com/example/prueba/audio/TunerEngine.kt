@@ -5,6 +5,8 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import kotlin.concurrent.thread
+import kotlin.math.abs
+import kotlin.math.ln
 import kotlin.math.sqrt
 
 /**
@@ -16,6 +18,39 @@ data class PitchReading(
     val confidence: Float,
     val rms: Float
 )
+
+/**
+ * Abre el AudioRecord con la mejor fuente disponible en cascada:
+ * UNPROCESSED (sin AGC, sin supresión de ruido, sin filtro paso-alto del
+ * OEM) → VOICE_RECOGNITION (sin AGC/NS en la mayoría de dispositivos) →
+ * MIC. El procesamiento del OEM en MIC atenúa el fundamental de la 6ª
+ * cuerda (82 Hz) y mete distorsión que ensucia la detección; la usan tanto
+ * el afinador como la práctica en vivo para oír exactamente lo mismo.
+ */
+@SuppressLint("MissingPermission") // El llamador garantiza RECORD_AUDIO concedido.
+internal fun abrirAudioRecordPreferido(sampleRate: Int, minBuffer: Int): AudioRecord? {
+    val fuentes = intArrayOf(
+        MediaRecorder.AudioSource.UNPROCESSED,
+        MediaRecorder.AudioSource.VOICE_RECOGNITION,
+        MediaRecorder.AudioSource.MIC
+    )
+    for (fuente in fuentes) {
+        val rec = try {
+            AudioRecord(
+                fuente,
+                sampleRate,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+                minBuffer
+            )
+        } catch (_: IllegalArgumentException) {
+            continue
+        }
+        if (rec.state == AudioRecord.STATE_INITIALIZED) return rec
+        rec.release()
+    }
+    return null
+}
 
 /**
  * Captura audio del micrófono con AudioRecord y detecta la frecuencia
@@ -50,35 +85,10 @@ class TunerEngine(
         AudioFormat.ENCODING_PCM_16BIT
     ).coerceAtLeast(analysisSize * 2)
 
-    @SuppressLint("MissingPermission") // El llamador garantiza RECORD_AUDIO concedido.
-    private fun crearAudioRecord(): AudioRecord? {
-        val fuentes = intArrayOf(
-            MediaRecorder.AudioSource.UNPROCESSED,
-            MediaRecorder.AudioSource.VOICE_RECOGNITION,
-            MediaRecorder.AudioSource.MIC
-        )
-        for (fuente in fuentes) {
-            val rec = try {
-                AudioRecord(
-                    fuente,
-                    sampleRate,
-                    AudioFormat.CHANNEL_IN_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT,
-                    minBuffer
-                )
-            } catch (_: IllegalArgumentException) {
-                continue
-            }
-            if (rec.state == AudioRecord.STATE_INITIALIZED) return rec
-            rec.release()
-        }
-        return null
-    }
-
     fun start() {
         if (running) return
 
-        val rec = crearAudioRecord() ?: return
+        val rec = abrirAudioRecordPreferido(sampleRate, minBuffer) ?: return
         record = rec
         running = true
         rec.startRecording()
@@ -86,7 +96,12 @@ class TunerEngine(
         worker = thread(name = "TunerEngine") {
             val ventana = ShortArray(analysisSize)
             val hop = ShortArray(hopSize)
-            val detector = MpmPitchDetector(sampleRate.toFloat(), analysisSize)
+            // Rango acotado a la afinación de guitarra (E2 muy baja .. algo
+            // por encima de E4): los picos NSDF fuera de ese rango son
+            // armónicos o ruido, no una cuerda al aire afinándose.
+            val detector = MpmPitchDetector(
+                sampleRate.toFloat(), analysisSize, minFreq = 55f, maxFreq = 520f
+            )
             var llenado = 0
             while (running) {
                 val read = rec.read(hop, 0, hopSize)
@@ -149,8 +164,8 @@ class TunerEngine(
 class MpmPitchDetector(
     private val sampleRate: Float,
     bufferSize: Int,
-    minFreq: Float = 60f,
-    maxFreq: Float = 1000f,
+    private val minFreq: Float = 60f,
+    private val maxFreq: Float = 1000f,
     private val kUmbral: Float = 0.90f,
     private val claridadMin: Float = 0.50f
 ) {
@@ -238,7 +253,7 @@ class MpmPitchDetector(
             if (picoVal[i] >= umbral) {
                 val freq = sampleRate / picoTau[i]
                 val claridad = picoVal[i].coerceIn(0f, 1f)
-                return if (freq in 60f..1000f) PitchReading(freq, claridad, rms)
+                return if (freq in minFreq..maxFreq) PitchReading(freq, claridad, rms)
                 else PitchReading(-1f, 0f, rms)
             }
         }
@@ -253,20 +268,26 @@ class MpmPitchDetector(
  *  - descarta lecturas de baja confianza
  *  - mediana de las últimas [tamanoMediana] lecturas válidas (mata outliers
  *    de un frame: ataques, armónicos sueltos)
- *  - suavizado exponencial SOLO dentro del mismo semitono; al cambiar de
- *    nota engancha directo (respuesta inmediata al cambiar de cuerda)
+ *  - suavizado exponencial ADAPTATIVO dentro del mismo semitono: cuanto más
+ *    quieta está la lectura, más pesado el filtro (la aguja no tiembla
+ *    cuando la cuerda ya está afinada); ante desvíos grandes responde rápido
+ *  - un salto a OTRO semitono solo se acepta si se confirma en dos medianas
+ *    seguidas (un armónico o error de octava de un frame no mueve la aguja);
+ *    confirmado, engancha directo sin arrastre (cambio de cuerda inmediato)
  *  - se apaga tras [msSilencio] sin lecturas válidas (la aguja no queda
  *    congelada mostrando una nota vieja)
  */
 class PitchStabilizer(
-    private val confianzaMin: Float = 0.55f,
-    private val tamanoMediana: Int = 5,
-    private val alpha: Float = 0.35f,
+    private val confianzaMin: Float = 0.60f,
+    private val tamanoMediana: Int = 7,
+    private val alphaRapido: Float = 0.40f,
+    private val alphaLento: Float = 0.12f,
     private val msSilencio: Long = 700L
 ) {
     private val recientes = ArrayDeque<Float>()
     private var suavizada = -1f
     private var ultimaValida = 0L
+    private var fueraDeNotaSeguidas = 0
 
     /**
      * Procesa una lectura cruda y devuelve la frecuencia estable en Hz,
@@ -281,6 +302,7 @@ class PitchStabilizer(
         } else if (ahora - ultimaValida > msSilencio) {
             recientes.clear()
             suavizada = -1f
+            fueraDeNotaSeguidas = 0
             return -1f
         }
         if (recientes.size < 3) return suavizada.takeIf { it > 0f } ?: -1f
@@ -292,9 +314,17 @@ class PitchStabilizer(
             // ¿Seguimos en la misma nota? (menos de medio semitono de salto)
             val ratio = mediana / suavizada
             if (ratio in 0.9715f..1.0293f) {
+                fueraDeNotaSeguidas = 0
+                // Cents de distancia entre la mediana y el valor suavizado:
+                // cerca (cuerda estable) filtra fuerte; lejos sigue rápido.
+                val cents = abs(1200.0 * ln(mediana.toDouble() / suavizada) / ln(2.0))
+                val alpha = if (cents < 3.0) alphaLento else alphaRapido
                 suavizada + alpha * (mediana - suavizada)
+            } else if (++fueraDeNotaSeguidas >= 2) {
+                fueraDeNotaSeguidas = 0
+                mediana   // cambio de nota confirmado: engancha sin arrastre
             } else {
-                mediana   // cambio de nota: engancha sin arrastre
+                suavizada // primer frame fuera: pudo ser un armónico suelto
             }
         }
         return suavizada
@@ -304,5 +334,6 @@ class PitchStabilizer(
         recientes.clear()
         suavizada = -1f
         ultimaValida = 0L
+        fueraDeNotaSeguidas = 0
     }
 }

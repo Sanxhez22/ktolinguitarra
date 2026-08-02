@@ -80,8 +80,18 @@ private val RosaLejos = Color(0xFFE94584)
 /** Tolerancia para dar una cuerda por afinada (± cents, sostenido). */
 private const val CENTS_AFINADA = 5f
 
+/**
+ * Histéresis del estado "afinada": se ENTRA con ±[CENTS_AFINADA], pero una
+ * vez confirmada se MANTIENE hasta ±[CENTS_MANTENER]. Sin esto, una lectura
+ * en 5.5 cents hacía parpadear el verde aunque la cuerda siguiera bien.
+ */
+private const val CENTS_MANTENER = 8f
+
 /** Lecturas estables consecutivas dentro de tolerancia para confirmar (~0.5 s). */
 private const val LECTURAS_EN_TONO = 10
+
+/** Lecturas seguidas fuera de la banda de mantener para perder el "afinada". */
+private const val LECTURAS_PARA_PERDER = 3
 
 /**
  * Afinador estilo GuitarTuna: escala de cents con puntero central, nota
@@ -98,6 +108,7 @@ fun TunerScreen() {
     var cuerdaAuto by remember { mutableStateOf<Cuerda?>(null) }
     var cuerdaManual by remember { mutableStateOf<Cuerda?>(null) }
     var enTonoSeguidas by remember { mutableIntStateOf(0) }
+    var fueraTonoSeguidas by remember { mutableIntStateOf(0) }
     var cuerdasAfinadas by remember { mutableStateOf(setOf<String>()) }
     var candidataSeguidas by remember { mutableIntStateOf(0) }
     var candidata by remember { mutableStateOf<Cuerda?>(null) }
@@ -140,6 +151,7 @@ fun TunerScreen() {
                     if (candidataSeguidas >= 3 || cuerdaAuto == null) {
                         cuerdaAuto = cercana
                         enTonoSeguidas = 0
+                        fueraTonoSeguidas = 0
                     }
                 } else {
                     candidataSeguidas = 0
@@ -148,13 +160,27 @@ fun TunerScreen() {
                 val objetivo = cuerdaManual ?: cuerdaAuto
                 if (objetivo != null) {
                     val cents = centsVsCuerda(freq, objetivo)
+                    val confirmada = enTonoSeguidas >= LECTURAS_EN_TONO
                     if (abs(cents) <= CENTS_AFINADA) {
+                        fueraTonoSeguidas = 0
                         enTonoSeguidas++
                         if (enTonoSeguidas >= LECTURAS_EN_TONO) {
                             notaEnTono = true
                             if (objetivo.nombre !in cuerdasAfinadas) {
                                 cuerdasAfinadas = cuerdasAfinadas + objetivo.nombre
                             }
+                        }
+                    } else if (confirmada && abs(cents) <= CENTS_MANTENER) {
+                        // Histéresis: ya estaba afinada y sigue dentro de la
+                        // banda de mantener; una lectura al borde no la baja.
+                        fueraTonoSeguidas = 0
+                    } else if (confirmada) {
+                        // Se salió de la banda: solo se pierde el estado si
+                        // se sostiene (no por un frame suelto del ataque).
+                        fueraTonoSeguidas++
+                        if (fueraTonoSeguidas >= LECTURAS_PARA_PERDER) {
+                            enTonoSeguidas = 0
+                            fueraTonoSeguidas = 0
                         }
                     } else {
                         enTonoSeguidas = 0
@@ -180,7 +206,8 @@ fun TunerScreen() {
     val cuerdaObjetivo = cuerdaManual ?: cuerdaAuto
     val hayTono = freqEstable > 0f && cuerdaObjetivo != null
     val cents = if (hayTono) centsVsCuerda(freqEstable, cuerdaObjetivo!!) else 0f
-    val afinadaAhora = hayTono && abs(cents) <= CENTS_AFINADA && enTonoSeguidas >= LECTURAS_EN_TONO
+    // Confirmada con ±5 y mantenida hasta ±8 (histéresis anti-parpadeo).
+    val afinadaAhora = hayTono && abs(cents) <= CENTS_MANTENER && enTonoSeguidas >= LECTURAS_EN_TONO
 
     Column(
         modifier = Modifier
@@ -327,6 +354,7 @@ fun TunerScreen() {
                                 .clickable {
                                     cuerdaManual = if (esManual) null else c
                                     enTonoSeguidas = 0
+                                    fueraTonoSeguidas = 0
                                 },
                             colors = CardDefaults.cardColors(
                                 containerColor = when {
