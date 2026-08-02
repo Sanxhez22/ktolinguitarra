@@ -3,7 +3,6 @@ package com.example.prueba.audio
 import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
-import android.media.MediaRecorder
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
@@ -41,17 +40,10 @@ class WavRecorder(
             AudioFormat.ENCODING_PCM_16BIT
         ).coerceAtLeast(chunkSize * 2)
 
-        val rec = AudioRecord(
-            MediaRecorder.AudioSource.MIC,
-            sampleRate,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT,
-            minBuffer
-        )
-        if (rec.state != AudioRecord.STATE_INITIALIZED) {
-            rec.release()
-            return false
-        }
+        // Misma cascada de fuentes que el afinador y la práctica en vivo:
+        // el WAV que analiza el backend debe oír lo mismo que el análisis
+        // en vivo (sin AGC ni filtros del OEM que recortan los graves).
+        val rec = abrirAudioRecordPreferido(sampleRate, minBuffer) ?: return false
         record = rec
         running = true
         rec.startRecording()

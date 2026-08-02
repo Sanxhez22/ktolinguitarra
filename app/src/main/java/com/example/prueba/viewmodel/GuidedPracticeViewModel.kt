@@ -29,7 +29,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-/** Tipos de paso que se validan por detección de tono (monofónico, YIN). */
+/** Tipos de paso que se validan por detección de tono (monofónico, MPM). */
 private val TIPOS_POR_PITCH = setOf("NOTE", "SEQUENCE", "STRING", "SCALE", "ARPEGGIO", "MELODY")
 
 /** Tipos de paso que se validan reconociendo el ACORDE tocado (croma). */
@@ -37,6 +37,21 @@ private val TIPOS_VALIDA_ACORDE = setOf("CHORD", "CHORD_CHANGE")
 
 /** Frames consecutivos con la nota correcta para contar un acierto (~280 ms). */
 private const val FRAMES_SOSTENIDOS = 3
+
+/**
+ * Frames sostenidos exigidos por TIPO de paso (cada ejercicio valida con
+ * su propio criterio, sin mezclar reglas):
+ *
+ *  - ARPEGGIO (arpegios / fingerpicking): la nota punteada decae rápido y
+ *    la siguiente cuerda llega enseguida; exigir ~280 ms hacía perder
+ *    notas bien tocadas. Bastan 2 frames confiables (~190 ms).
+ *  - STRING (afinación), NOTE, SCALE, MELODY y SEQUENCE: nota sostenida,
+ *    3 frames (~280 ms) para confirmar que la nota suena de verdad.
+ */
+private fun framesSostenidosDe(tipo: String): Int = when (tipo) {
+    "ARPEGGIO" -> 2
+    else -> FRAMES_SOSTENIDOS
+}
 
 /** Frames consecutivos con el acorde correcto para contar un rasgueo válido. */
 private const val FRAMES_ACORDE = 2
@@ -70,8 +85,9 @@ private const val MS_GUIA_PREVIA = 7000L
 
 /**
  * Cents de desviación de la frecuencia detectada respecto a la nota objetivo,
- * IGNORANDO la octava (los armónicos hacen saltar de octava a YIN en algunas
- * cuerdas al aire). Null si no hay tono o el objetivo no parsea.
+ * IGNORANDO la octava (los armónicos pueden hacer saltar de octava al
+ * detector en algunas cuerdas al aire). Null si no hay tono o el objetivo
+ * no parsea.
  */
 private fun centsVsObjetivo(freqHz: Float, objetivo: String): Double? {
     if (freqHz <= 0f) return null
@@ -454,7 +470,7 @@ class GuidedPracticeViewModel : ViewModel() {
         }
     }
 
-    /** NOTE/SEQUENCE/STRING/SCALE/ARPEGGIO/MELODY: nota a nota con YIN. */
+    /** NOTE/SEQUENCE/STRING/SCALE/ARPEGGIO/MELODY: nota a nota con MPM. */
     private fun procesarPitch(
         frame: LivePracticeEngine.LiveFrame,
         s: LiveState,
@@ -471,10 +487,11 @@ class GuidedPracticeViewModel : ViewModel() {
             if (cents != null) _state.value = s.copy(centsDetectados = null)
             return
         }
+        val framesNecesarios = framesSostenidosDe(paso.tipo)
         if (cumpleObjetivo(frame, objetivo, paso.tipo)) {
             framesEnObjetivo++
             framesEnError = 0
-            if (framesEnObjetivo >= FRAMES_SOSTENIDOS) {
+            if (framesEnObjetivo >= framesNecesarios) {
                 // Acierto: avanza al siguiente objetivo de la secuencia.
                 framesEnObjetivo = 0
                 objetivoIdx++
@@ -498,7 +515,7 @@ class GuidedPracticeViewModel : ViewModel() {
             framesEnObjetivo = 0
             framesEnError++
             // Nota equivocada sostenida: feedback de fallo (sin castigar doble).
-            if (framesEnError == FRAMES_SOSTENIDOS) {
+            if (framesEnError == framesNecesarios) {
                 _state.value = s.copy(
                     feedback = FeedbackVivo.FALLO,
                     notaDetectada = nota,

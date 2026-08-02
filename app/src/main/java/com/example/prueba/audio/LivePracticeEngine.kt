@@ -3,7 +3,6 @@ package com.example.prueba.audio
 import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
-import android.media.MediaRecorder
 import java.io.File
 import kotlin.concurrent.thread
 import kotlin.math.ln
@@ -31,7 +30,10 @@ class LivePracticeEngine(
     /**
      * Lectura de una ventana de análisis (~93 ms a 44.1 kHz):
      * @param freqHz      frecuencia fundamental detectada (-1 si no hay tono)
-     * @param nota        nombre de la nota con octava ("A2") o null
+     * @param nota        nombre de la nota con octava ("A2") o null; solo se
+     *                    entrega cuando la claridad MPM supera el umbral de
+     *                    confianza (las lecturas dudosas no cuentan notas)
+     * @param confianza   claridad MPM 0..1 de la detección de pitch
      * @param rms         energía de la ventana (0..1)
      * @param ataque      true si esta ventana contiene un ataque (golpe/rasgueo)
      * @param acorde      acorde detectado por croma ("Am") o null si la
@@ -41,6 +43,7 @@ class LivePracticeEngine(
     data class LiveFrame(
         val freqHz: Float,
         val nota: String?,
+        val confianza: Float = 0f,
         val rms: Float,
         val ataque: Boolean,
         val acorde: String? = null,
@@ -66,17 +69,10 @@ class LivePracticeEngine(
             AudioFormat.ENCODING_PCM_16BIT
         ).coerceAtLeast(chunkSize * 2)
 
-        val rec = AudioRecord(
-            MediaRecorder.AudioSource.MIC,
-            sampleRate,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT,
-            minBuffer
-        )
-        if (rec.state != AudioRecord.STATE_INITIALIZED) {
-            rec.release()
-            return false
-        }
+        // Misma cascada de fuentes que el afinador (UNPROCESSED primero):
+        // con MIC a secas el procesamiento del OEM se comía el fundamental
+        // de las cuerdas graves y el fingerpicking en E2/A2 no se reconocía.
+        val rec = abrirAudioRecordPreferido(sampleRate, minBuffer) ?: return false
         record = rec
         running = true
         rec.startRecording()
@@ -117,12 +113,18 @@ class LivePracticeEngine(
                 if (esAtaque) muestrasDesdeAtaque = 0
                 rmsAnterior = rms
 
-                val freq = detector.detect(buffer, read)
+                val lectura = detector.detectReading(buffer, read)
                 val acorde = acordes.detectar(buffer, read)
+                // La nota solo cuenta con claridad suficiente: una lectura
+                // dudosa (ataque sucio, armónico suelto) no debe sumar ni
+                // resetear los contadores de acierto de la práctica.
+                val notaConfiable = lectura.freqHz > 0f &&
+                    lectura.confidence >= CONFIANZA_MIN_NOTA
                 onFrame(
                     LiveFrame(
-                        freqHz = freq,
-                        nota = if (freq > 0f) freqToNoteName(freq) else null,
+                        freqHz = lectura.freqHz,
+                        nota = if (notaConfiable) freqToNoteName(lectura.freqHz) else null,
+                        confianza = lectura.confidence,
                         rms = rms,
                         ataque = esAtaque,
                         acorde = acorde?.acorde,
@@ -172,6 +174,9 @@ class LivePracticeEngine(
         record = null
     }
 }
+
+/** Claridad MPM mínima para que un frame de práctica reporte nota. */
+private const val CONFIANZA_MIN_NOTA = 0.55f
 
 private val NOMBRES_NOTA =
     listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
